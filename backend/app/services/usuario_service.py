@@ -8,13 +8,38 @@ Contiene la lógica de negocio para:
 """
 
 from sqlalchemy.orm import Session
-from fastapi import HTTPException
 
 from app.models.usuario import Usuario
 from app.models.empresa import Empresa
 from app.models.plan import Plan
 from app.security.password import hash_password
-from app.database import get_db
+from app.repositories.usuario_repository import (
+    get_user_by_email,
+    count_users_by_empresa,
+    get_usuario_by_id_and_empresa,
+    update_usuario_activo as repo_update_usuario_activo,
+)
+from app.core.errors import ApiError
+
+
+def _obtener_empresa_y_plan(db: Session, empresa_id: int) -> tuple[Empresa, Plan]:
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    if not empresa:
+        raise ApiError(
+            code="empresa_not_found",
+            message="Empresa no encontrada",
+            status_code=404,
+        )
+
+    plan = db.query(Plan).filter(Plan.id == empresa.plan_id).first()
+    if not plan:
+        raise ApiError(
+            code="plan_not_found",
+            message="Plan asociado a la empresa no encontrado",
+            status_code=500,
+        )
+
+    return empresa, plan
 
 
 def crear_usuario(
@@ -23,60 +48,39 @@ def crear_usuario(
     email: str,
     password: str,
     rol_id: int,
-    empresa_id: int
-):
+    empresa_id: int,
+) -> Usuario:
     """
-    Crea un usuario para una empresa
-    validando el límite del plan.
+    Crea un usuario para una empresa validando:
+    - existencia de la empresa y su plan
+    - límite de usuarios del plan
+    - unicidad del email
     """
 
-    # buscar empresa
-    empresa = db.query(Empresa).filter(
-        Empresa.id == empresa_id
-    ).first()
+    empresa, plan = _obtener_empresa_y_plan(db, empresa_id)
 
-    if not empresa:
-        raise HTTPException(
-            status_code=404,
-            detail="Empresa no encontrada"
-        )
-
-    # obtener plan
-    plan = db.query(Plan).filter(
-        Plan.id == empresa.plan_id
-    ).first()
-
-    # contar usuarios actuales
-    total_usuarios = db.query(Usuario).filter(
-        Usuario.empresa_id == empresa_id
-    ).count()
-
-    # validar límite de plan
-    if total_usuarios >= plan.max_usuarios:
-        raise HTTPException(
+    total_usuarios = count_users_by_empresa(db, empresa.id)
+    if plan.max_usuarios is not None and total_usuarios >= plan.max_usuarios:
+        raise ApiError(
+            code="plan_user_limit_reached",
+            message="Límite de usuarios alcanzado para el plan",
             status_code=400,
-            detail="Límite de usuarios alcanzado para el plan"
         )
 
-    # validar email único
-    existe = db.query(Usuario).filter(
-        Usuario.email == email
-    ).first()
-
-    if existe:
-        raise HTTPException(
+    if get_user_by_email(db, email) is not None:
+        raise ApiError(
+            code="email_already_registered",
+            message="Email ya registrado",
             status_code=400,
-            detail="Email ya registrado"
         )
 
-    # crear usuario
     nuevo_usuario = Usuario(
         nombre=nombre,
         email=email,
         password_hash=hash_password(password),
         rol_id=rol_id,
-        empresa_id=empresa_id,
-        activo=True
+        empresa_id=empresa.id,
+        activo=True,
     )
 
     db.add(nuevo_usuario)
@@ -84,3 +88,20 @@ def crear_usuario(
     db.refresh(nuevo_usuario)
 
     return nuevo_usuario
+
+
+def actualizar_activo_usuario(
+    db: Session,
+    usuario_id: int,
+    empresa_id: int,
+    activo: bool,
+) -> Usuario:
+    """Activa o desactiva un usuario de la empresa. Lanza ApiError si no existe."""
+    usuario = repo_update_usuario_activo(db, usuario_id, empresa_id, activo)
+    if not usuario:
+        raise ApiError(
+            code="usuario_not_found",
+            message="Usuario no encontrado",
+            status_code=404,
+        )
+    return usuario

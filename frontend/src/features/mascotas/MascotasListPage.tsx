@@ -1,0 +1,214 @@
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useClientes } from '../clientes/hooks/useClientes'
+import { useEspecies } from '../catalogo/hooks/useEspecies'
+import { useAllRazas } from '../catalogo/hooks/useRazas'
+import { useMascotas } from './hooks/useMascotas'
+import { deleteMascota, updateMascotaActivo } from './api'
+import { mascotasKeys } from './hooks/useMascotas'
+import { Card } from '../../shared/ui/Card'
+import { Button } from '../../shared/ui/Button'
+import { Input } from '../../shared/ui/Input'
+import { Table, TableHead, TableBody, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
+import { Pagination } from '../../shared/ui/Pagination'
+import { Alert } from '../../shared/ui/Alert'
+import { DEFAULT_PAGE_SIZE } from '../../core/constants'
+import { toast } from '../../core/toast-store'
+import { ApiError } from '../../api/errors'
+
+export function MascotasListPage() {
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [nombre, setNombre] = useState('')
+  const [clienteId, setClienteId] = useState<string>('')
+  const [incluirInactivos, setIncluirInactivos] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const filters = {
+    page,
+    page_size: pageSize,
+    nombre: nombre || undefined,
+    cliente_id: clienteId ? parseInt(clienteId, 10) : undefined,
+    incluir_inactivos: incluirInactivos,
+  }
+  const { data, isLoading, isError, error: queryError } = useMascotas(filters)
+  const { data: clientesData } = useClientes({ page: 1, page_size: 500 })
+  const { data: especies = [] } = useEspecies()
+  const { data: razas = [] } = useAllRazas()
+  const clientesMap = new Map((clientesData?.items ?? []).map((c) => [c.id, c.nombre]))
+  const especiesMap = new Map(especies.map((s) => [s.id, s.nombre]))
+  const razasMap = new Map(razas.map((r) => [r.id, r.nombre ?? `Raza ${r.id}`]))
+
+  async function handleDelete(id: number, nombreMascota: string) {
+    if (!window.confirm(`¿Desactivar mascota "${nombreMascota}"?`)) return
+    setError(null)
+    try {
+      await deleteMascota(id)
+      queryClient.invalidateQueries({ queryKey: mascotasKeys().list(filters) })
+      toast.success('Mascota desactivada correctamente')
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Error al desactivar.'
+      setError(msg)
+      toast.error(msg)
+    }
+  }
+
+  async function handleReactivar(id: number, nombreMascota: string) {
+    if (!window.confirm(`¿Reactivar mascota "${nombreMascota}"?`)) return
+    setError(null)
+    try {
+      await updateMascotaActivo(id, true)
+      queryClient.invalidateQueries({ queryKey: mascotasKeys().list(filters) })
+      toast.success('Mascota reactivada correctamente')
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Error al reactivar.'
+      setError(msg)
+      toast.error(msg)
+    }
+  }
+
+  const showError = error ?? (isError && queryError instanceof ApiError ? queryError.message : null)
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Mascotas</h1>
+        <Link to="/mascotas/nuevo">
+          <Button>Nueva mascota</Button>
+        </Link>
+      </div>
+
+      <Card title="Listado">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <Input
+              placeholder="Buscar por nombre"
+              value={nombre}
+              onChange={(e) => {
+                setNombre(e.target.value)
+                setPage(1)
+              }}
+              className="max-w-xs"
+            />
+            <div className="w-full max-w-[220px]">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Cliente
+              </label>
+              <select
+                value={clienteId}
+                onChange={(e) => {
+                  setClienteId(e.target.value)
+                  setPage(1)
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Todos</option>
+                {(clientesData?.items ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={incluirInactivos}
+                onChange={(e) => {
+                  setIncluirInactivos(e.target.checked)
+                  setPage(1)
+                }}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              Incluir inactivas
+            </label>
+          </div>
+          {showError && (
+            <Alert variant="error" onDismiss={() => setError(null)}>
+              {showError}
+            </Alert>
+          )}
+          {isLoading && <p className="text-sm text-gray-500">Cargando...</p>}
+          {data && (
+            <>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableTh>Nombre</TableTh>
+                    <TableTh>Cliente</TableTh>
+                    <TableTh>Especie / Raza</TableTh>
+                    <TableTh>Sexo</TableTh>
+                    <TableTh>Estado</TableTh>
+                    <TableTh className="text-right">Acciones</TableTh>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data.items.map((m) => (
+                    <TableRow key={m.id} className={!m.activo ? 'bg-gray-50' : ''}>
+                      <TableTd>
+                        <Link
+                          to={`/mascotas/${m.id}`}
+                          className="font-medium text-primary-600 hover:underline"
+                        >
+                          {m.nombre}
+                        </Link>
+                      </TableTd>
+                      <TableTd>
+                        <Link
+                          to={`/clientes/${m.cliente_id}`}
+                          className="text-primary-600 hover:underline text-sm"
+                        >
+                          {clientesMap.get(m.cliente_id) ?? `Cliente #${m.cliente_id}`}
+                        </Link>
+                      </TableTd>
+                      <TableTd className="text-sm text-gray-600">
+                        {m.especie_id != null ? especiesMap.get(m.especie_id) ?? `#${m.especie_id}` : '—'}
+                        {' / '}
+                        {m.raza_id != null ? razasMap.get(m.raza_id) ?? `#${m.raza_id}` : '—'}
+                      </TableTd>
+                      <TableTd>{m.sexo ?? '—'}</TableTd>
+                      <TableTd>
+                        {m.activo ? (
+                          <span className="text-green-600 text-sm">Activa</span>
+                        ) : (
+                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            Inactiva
+                          </span>
+                        )}
+                      </TableTd>
+                      <TableTd className="text-right">
+                        {m.activo ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => handleDelete(m.id, m.nombre)}
+                          >
+                            Desactivar
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="primary"
+                            onClick={() => handleReactivar(m.id, m.nombre)}
+                          >
+                            Reactivar
+                          </Button>
+                        )}
+                      </TableTd>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Pagination
+                page={data.page}
+                pageSize={data.page_size}
+                total={data.total}
+                onPageChange={setPage}
+              />
+            </>
+          )}
+        </div>
+      </Card>
+    </div>
+  )
+}

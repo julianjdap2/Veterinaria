@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from app.database.database import Base
+from sqlalchemy import Boolean
 
 
 class Mascota(Base):
@@ -31,7 +32,7 @@ class Mascota(Base):
 
     empresa_id = Column(Integer, ForeignKey("empresas.id"))
 
-    activo = Column(Integer, default=1)
+    activo = Column(Boolean, default=True)
 
     created_at = Column(
         TIMESTAMP,

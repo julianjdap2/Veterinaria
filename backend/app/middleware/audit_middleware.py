@@ -1,46 +1,36 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from sqlalchemy.orm import Session
 
-from app.database.database import SessionLocal
-from app.repositories.audit_repository import create_audit_log
+from app.utils.audit_context import set_audit_context, clear_audit_context
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware que garantiza que siempre exista un contexto de auditoría
+    (aunque el request no pase por autenticación).
+    """
 
     async def dispatch(self, request: Request, call_next):
+        try:
+            ip = None
 
-        response = await call_next(request)
+            if request.headers.get("x-forwarded-for"):
+                ip = request.headers.get("x-forwarded-for").split(",")[0].strip()
+            elif request.client:
+                ip = request.client.host
 
-        # Solo registrar acciones importantes
-        if request.method in ["POST", "PUT", "DELETE"]:
+            # Si la autenticación luego establece el usuario, solo se
+            # sobrescribirá el user_id, manteniendo la IP.
+            set_audit_context(user_id=None, ip=ip)
 
-            try:
-                db: Session = SessionLocal()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Error capturando IP: %s", e)
 
-                # Obtener usuario desde el token (si existe)
-                user = getattr(request.state, "user", None)
-
-                usuario_id = None
-                if user:
-                    usuario_id = user.id
-
-                modulo = request.url.path
-                accion = request.method
-
-                registrar_log(
-                    db=db,
-                    usuario_id=usuario_id,
-                    accion=accion,
-                    modulo=modulo,
-                    registro_id=None,
-                    descripcion=f"{accion} en {modulo}"
-                )
-
-                db.close()
-
-            except Exception:
-                # Nunca romper la API por un error de auditoría
-                pass
+        try:
+            response = await call_next(request)
+        finally:
+            # Asegurarse de limpiar el contexto al finalizar el request
+            clear_audit_context()
 
         return response

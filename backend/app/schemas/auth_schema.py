@@ -1,21 +1,29 @@
 """
 auth_schema.py
 
-Schemas utilizados para login.
+Schemas para autenticación (login y respuesta JWT).
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
+    """Cuerpo del request de login."""
 
-    email: str
+    email: str = Field(description="Email del usuario")
+    password: str = Field(description="Contraseña")
 
-    password: str
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"email": "admin@vet.com", "password": "mi_password_seguro"}
+            ]
+        }
+    }
 
 
 class TokenResponse(BaseModel):
+    """Respuesta con el token JWT."""
 
-    access_token: str
-
-    token_type: str = "bearer"
+    access_token: str = Field(description="Token JWT para Authorization: Bearer")
+    token_type: str = Field(default="bearer", description="Tipo de token")

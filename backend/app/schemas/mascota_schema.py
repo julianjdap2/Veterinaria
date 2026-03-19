@@ -6,9 +6,9 @@ Utilizamos Pydantic para validar los datos
 que llegan a la API.
 """
 
-from pydantic import BaseModel
 from datetime import date
 from typing import Optional
+from pydantic import BaseModel, ConfigDict
 
 
 class MascotaBase(BaseModel):
@@ -24,15 +24,35 @@ class MascotaBase(BaseModel):
     alergias: Optional[str]=None
 
 
+class MascotaUpdate(BaseModel):
+    """Payload para actualizar mascota (p. ej. reactivar)."""
+
+    activo: Optional[bool] = None
+
+
 class MascotaCreate(MascotaBase):
-    pass
+    """Payload para crear una mascota."""
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "nombre": "Firulais",
+                    "cliente_id": 1,
+                    "especie_id": 1,
+                    "raza_id": 1,
+                    "sexo": "M",
+                    "peso": 12.5,
+                }
+            ]
+        }
+    }
 
 
 class MascotaResponse(MascotaBase):
 
     id: int
     empresa_id: int
-    activo: int
+    activo: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

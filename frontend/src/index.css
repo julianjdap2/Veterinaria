@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-slate-800 font-sans;
+  }
+}
+
+/* Animación mascotas banner: cruzan de izquierda a derecha (fuera de @layer para que no se purgue) */
+@keyframes mascot-cross-banner {
+  0% {
+    transform: translate(-4rem, -50%);
+  }
+  100% {
+    transform: translate(100vw, -50%);
+  }
+}
+
+@keyframes mascot-bounce-walk {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.banner-mascot-cross {
+  will-change: transform;
+  transform: translate(-4rem, -50%); /* estado inicial; la animación lo mueve */
+  animation: mascot-cross-banner 18s linear infinite backwards;
+}
+
+.banner-mascot-bounce {
+  animation: mascot-bounce-walk 0.4s ease-in-out infinite;
+}
+
+/* Fondo moderno con huellitas sutiles (patrón repetitivo) */
+.app-bg {
+  background-color: #f1f5f9; /* slate-100 */
+  background-image:
+    radial-gradient(800px 260px at 20% 0%, rgba(37, 99, 235, 0.18), transparent 55%),
+    radial-gradient(520px 220px at 85% 20%, rgba(6, 182, 212, 0.14), transparent 60%),
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='72'%20height='72'%20viewBox='0%200%2072%2072'%3E%3Cg%20fill='%232563eb'%20fill-opacity='0.22'%3E%3Cellipse%20cx='36'%20cy='52'%20rx='20'%20ry='14'/%3E%3Ccircle%20cx='26'%20cy='32'%20r='9'/%3E%3Ccircle%20cx='46'%20cy='32'%20r='9'/%3E%3Ccircle%20cx='18'%20cy='40'%20r='7'/%3E%3Ccircle%20cx='54'%20cy='40'%20r='7'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: center, center, 0 0;
+  background-size: auto, auto, 140px 140px;
+}
+

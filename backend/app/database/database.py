@@ -10,19 +10,17 @@ Este archivo se encarga de:
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+
 from app.config import settings
-import os
 
-# Cargar variables de entorno
-
-
-# Obtener URL de base de datos desde .env
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Usar la URL centralizada en settings para evitar
+# configuraciones divergentes.
+DATABASE_URL = settings.DATABASE_URL
 
 # Crear motor de conexión
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True
+    pool_pre_ping=True,
 )
 
 # Crear sesión de base de datos
