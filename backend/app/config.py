@@ -66,6 +66,20 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = Field(default="", description="Contraseña SMTP.")
     SMTP_FROM_EMAIL: str = Field(default="", description="Email remitente por defecto.")
 
+    # Twilio (SMS / WhatsApp) - opcional.
+    # Si no se configura, el sistema hace fallback a modo log.
+    TWILIO_ACCOUNT_SID: str = Field(default="", description="Twilio Account SID.")
+    TWILIO_AUTH_TOKEN: str = Field(default="", description="Twilio Auth Token.")
+    TWILIO_FROM_NUMBER: str = Field(
+        default="",
+        description="Número origen para SMS/WhatsApp en formato E.164 (ej: +573001234567).",
+    )
+
+    DEFAULT_PHONE_COUNTRY_CODE: str = Field(
+        default="+57",
+        description="Indicativo por defecto para números sin '+'.",
+    )
+
     # Cron: si está definido, POST /cron/* exige header X-Cron-Secret
     CRON_SECRET: str = Field(default="", description="Secret para endpoints cron (header X-Cron-Secret).")
 

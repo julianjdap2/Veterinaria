@@ -82,6 +82,7 @@ export function ProductoEditPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (productId == null) return
     setError(null)
     const payload: Partial<ProductoCreate> & { stock_ajuste?: number } = {
       nombre: currentForm.nombre.trim(),

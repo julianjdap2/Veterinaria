@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../core/auth-store'
@@ -13,6 +14,7 @@ import { Input } from '../../shared/ui/Input'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
 import type { FormulaItemCreate } from '../../api/types'
+import { PAGE_SIZE_SELECT, SEARCH_DEBOUNCE_MS, SEARCH_MIN_CHARS } from '../../core/listDefaults'
 
 const defaultFormulaForm: FormulaItemCreate = {
   producto_id: 0,
@@ -37,15 +39,24 @@ export function ConsultaDetailPage() {
   const { data: citaDetalle } = useCitaDetail(consulta?.cita_id ?? null)
   const puedeRegistrarVenta =
     consulta?.cita_id == null ? puedeRegistrarVentaPorRol : citaDetalle?.estado === 'atendida' && puedeRegistrarVentaPorRol
+
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [prodFilter, setProdFilter] = useState('')
+  const debouncedProd = useDebouncedValue(prodFilter.trim(), SEARCH_DEBOUNCE_MS)
+  const needProductos = isVet && (formula.length === 0 || showAddForm)
   const { data: productosData } = useProductos(
-    { page: 1, page_size: 500, incluir_inactivos: false },
-    { enabled: isVet }
+    {
+      page: 1,
+      page_size: PAGE_SIZE_SELECT,
+      incluir_inactivos: false,
+      search: debouncedProd.length >= SEARCH_MIN_CHARS ? debouncedProd : undefined,
+    },
+    { enabled: needProductos }
   )
   const productos = productosData?.items ?? []
 
   const [downloading, setDownloading] = useState(false)
   const [sending, setSending] = useState(false)
-  const [showAddForm, setShowAddForm] = useState(false)
   const [formulaForm, setFormulaForm] = useState<FormulaItemCreate>(defaultFormulaForm)
   const [addingFormula, setAddingFormula] = useState(false)
 
@@ -235,6 +246,7 @@ export function ConsultaDetailPage() {
               <p><span className="font-medium text-gray-600">Motivo:</span> {resumen.motivo_consulta}</p>
               <p><span className="font-medium text-gray-600">Diagnóstico:</span> {resumen.diagnostico}</p>
               <p><span className="font-medium text-gray-600">Tratamiento:</span> {resumen.tratamiento}</p>
+              <p><span className="font-medium text-gray-600">Notas de la cita:</span> {resumen.notas_cita}</p>
               <p><span className="font-medium text-gray-600">Observaciones:</span> {resumen.observaciones}</p>
             </div>
           </div>
@@ -260,6 +272,17 @@ export function ConsultaDetailPage() {
 
         {isVet && (formula.length === 0 || showAddForm) && (
           <form onSubmit={handleAddFormula} className="mb-4 p-3 rounded-xl bg-slate-50 space-y-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Buscar medicamento</label>
+              <input
+                type="search"
+                value={prodFilter}
+                onChange={(e) => setProdFilter(e.target.value)}
+                placeholder={`Opcional: refina con ${SEARCH_MIN_CHARS}+ caracteres (por defecto se listan ${PAGE_SIZE_SELECT})`}
+                className="w-full max-w-lg rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                autoComplete="off"
+              />
+            </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Medicamento</label>

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useMascotas } from '../mascotas/hooks/useMascotas'
+import { MascotaSearchSelect } from '../mascotas/components/MascotaSearchSelect'
 import { useMotivosConsulta } from '../catalogo/hooks/useMotivosConsulta'
 import { useProductos } from '../productos/hooks/useProductos'
 import { createConsultaConFormula } from './api'
@@ -11,7 +11,7 @@ import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
-import type { FormulaItemCreate } from '../../api/types'
+import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
 
 type FormulaDraft = {
   producto_id: number
@@ -34,7 +34,7 @@ export function ConsultaCreatePage() {
   const mascotaIdFromState = state?.mascotaId
   const motivoFromState = state?.motivoConsulta ?? ''
   const citaIdFromState = state?.citaId
-  const [mascotaId, setMascotaId] = useState(mascotaIdFromState?.toString() ?? '')
+  const [mascotaId, setMascotaId] = useState<number | null>(mascotaIdFromState ?? null)
   const [motivoPredefinido, setMotivoPredefinido] = useState('')
   const [motivoOtro, setMotivoOtro] = useState('')
   const [diagnostico, setDiagnostico] = useState('')
@@ -51,15 +51,32 @@ export function ConsultaCreatePage() {
     unidad: undefined,
   })
   const [saving, setSaving] = useState(false)
+  const [prodSearch, setProdSearch] = useState('')
+  const [showProdResults, setShowProdResults] = useState(false)
+  const prodSearchRef = useRef<HTMLDivElement>(null)
 
-  const { data: mascotasData } = useMascotas({ page: 1, page_size: 500, incluir_inactivos: false })
   const { data: motivosList = [] } = useMotivosConsulta()
-  const { data: productosData } = useProductos(
-    { page: 1, page_size: 500, incluir_inactivos: false },
-    { enabled: true }
+  const debouncedProd = useDebouncedValue(prodSearch.trim(), 300)
+  const { data: productosData, isLoading: searchingProductos } = useProductos(
+    {
+      page: 1,
+      page_size: 25,
+      search: debouncedProd.length >= 2 ? debouncedProd : undefined,
+      incluir_inactivos: false,
+    },
+    { enabled: debouncedProd.length >= 2 },
   )
-  const mascotas = mascotasData?.items ?? []
-  const productos = productosData?.items ?? []
+  const productosResultados = productosData?.items ?? []
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (prodSearchRef.current && !prodSearchRef.current.contains(event.target as Node)) {
+        setShowProdResults(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     if (!motivoFromState || motivosList.length === 0) return
@@ -70,7 +87,14 @@ export function ConsultaCreatePage() {
 
   function addFormulaRow() {
     if (!formulaForm.producto_id) return
-    const p = productos.find((x) => x.id === formulaForm.producto_id)
+    const p =
+      productosResultados.find((x) => x.id === formulaForm.producto_id) ??
+      ({ id: formulaForm.producto_id, nombre: formulaForm.producto_nombre } as {
+        id: number
+        nombre: string
+        presentacion?: string | null
+        unidad?: string | null
+      })
     setFormulaItems((prev) => [
       ...prev,
       {
@@ -96,8 +120,8 @@ export function ConsultaCreatePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    const mId = parseInt(mascotaId, 10)
-    if (!mascotaId || Number.isNaN(mId)) {
+    const mId = mascotaId
+    if (mId == null || mId <= 0) {
       setError('Selecciona una mascota.')
       toast.warning('Selecciona una mascota.')
       return
@@ -114,7 +138,14 @@ export function ConsultaCreatePage() {
         formulaForm.producto_id &&
         formulaForm.producto_id > 0
       ) {
-        const p = productos.find((x) => x.id === formulaForm.producto_id)
+        const p =
+          productosResultados.find((x) => x.id === formulaForm.producto_id) ??
+          ({ id: formulaForm.producto_id, nombre: formulaForm.producto_nombre } as {
+            id: number
+            nombre?: string
+            presentacion?: string | null
+            unidad?: string | null
+          })
         effectiveFormulaItems.push({
           ...formulaForm,
           producto_nombre: p?.nombre,
@@ -176,20 +207,11 @@ export function ConsultaCreatePage() {
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
                 Mascota <span className="text-red-500">*</span>
               </label>
-              <select
+              <MascotaSearchSelect
                 value={mascotaId}
-                onChange={(e) => setMascotaId(e.target.value)}
-                required
+                onChange={setMascotaId}
                 disabled={saving || !!mascotaIdFromState}
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-              >
-                <option value="">Seleccionar mascota</option>
-                {mascotas.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <Input
               type="date"
@@ -270,32 +292,79 @@ export function ConsultaCreatePage() {
             </p>
             <div className="mb-3 rounded-xl bg-slate-50 p-3 space-y-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Medicamento</label>
-                  <select
-                    value={formulaForm.producto_id || ''}
-                    onChange={(e) =>
-                      (() => {
-                        const newId = parseInt(e.target.value, 10) || 0
-                        const p = productos.find((x) => x.id === newId)
-                        setFormulaForm((f) => ({
-                          ...f,
-                          producto_id: newId,
-                          presentacion: p?.presentacion ?? '',
-                          unidad: p?.unidad ?? undefined,
-                        }))
-                      })()
-                    }
+                <div ref={prodSearchRef} className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Medicamento (buscar por nombre, código o EAN)
+                  </label>
+                  <input
+                    type="text"
+                    value={prodSearch}
+                    onChange={(e) => {
+                      setProdSearch(e.target.value)
+                      setShowProdResults(true)
+                    }}
+                    onFocus={() => debouncedProd.length >= 2 && setShowProdResults(true)}
+                    placeholder="Mín. 2 caracteres…"
                     disabled={saving}
+                    autoComplete="off"
                     className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
-                  >
-                    <option value="">Seleccionar</option>
-                    {productos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  {formulaForm.producto_id > 0 && (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Seleccionado:{' '}
+                      <strong>{formulaForm.producto_nombre ?? `#${formulaForm.producto_id}`}</strong>
+                      <button
+                        type="button"
+                        className="ml-2 text-primary-600 hover:underline"
+                        onClick={() => {
+                          setFormulaForm((f) => ({
+                            ...f,
+                            producto_id: 0,
+                            producto_nombre: undefined,
+                            presentacion: '',
+                            unidad: undefined,
+                          }))
+                          setProdSearch('')
+                        }}
+                      >
+                        Quitar
+                      </button>
+                    </p>
+                  )}
+                  {showProdResults && debouncedProd.length >= 2 && (
+                    <div className="relative z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white shadow-md">
+                      {searchingProductos && (
+                        <p className="px-3 py-2 text-sm text-slate-500">Buscando…</p>
+                      )}
+                      {!searchingProductos && productosResultados.length === 0 && (
+                        <p className="px-3 py-2 text-sm text-slate-500">Sin resultados.</p>
+                      )}
+                      {!searchingProductos &&
+                        productosResultados.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="block w-full px-3 py-2 text-left text-sm hover:bg-primary-50"
+                            onClick={() => {
+                              setFormulaForm((f) => ({
+                                ...f,
+                                producto_id: p.id,
+                                producto_nombre: p.nombre,
+                                presentacion: p.presentacion ?? '',
+                                unidad: p.unidad ?? undefined,
+                              }))
+                              setProdSearch('')
+                              setShowProdResults(false)
+                            }}
+                          >
+                            <span className="font-medium text-slate-900">{p.nombre}</span>
+                            {p.presentacion ? (
+                              <span className="ml-2 text-xs text-slate-500">{p.presentacion}</span>
+                            ) : null}
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Presentación</label>

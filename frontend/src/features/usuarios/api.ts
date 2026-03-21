@@ -8,6 +8,38 @@ import type { PaginatedResponse, PaginationParams } from '../../core/types'
 
 export interface UsuariosFilters extends PaginationParams {}
 
+/** Permisos granulares del admin actual (GET /usuarios/mi-permisos-admin). */
+export interface MisPermisosAdmin {
+  admin_gestion_usuarios: boolean
+  admin_gestion_inventario: boolean
+  admin_gestion_ventas: boolean
+  admin_gestion_citas: boolean
+  admin_ver_auditoria: boolean
+  admin_configuracion_empresa: boolean
+  admin_carga_masiva_inventario: boolean
+  admin_exportacion_dashboard: boolean
+}
+
+export interface EmpresaPerfilAdmin {
+  id: number
+  empresa_id: number
+  nombre: string
+  slug: string
+  admin_gestion_usuarios: boolean | null
+  admin_gestion_inventario: boolean | null
+  admin_gestion_ventas: boolean | null
+  admin_gestion_citas: boolean | null
+  admin_ver_auditoria: boolean | null
+  admin_configuracion_empresa: boolean | null
+  admin_carga_masiva_inventario: boolean | null
+  admin_exportacion_dashboard: boolean | null
+}
+
+export async function fetchMisPermisosAdmin(): Promise<MisPermisosAdmin> {
+  const { data } = await apiClient.get<MisPermisosAdmin>('/usuarios/mi-permisos-admin')
+  return data
+}
+
 export async function fetchUsuarios(
   params: UsuariosFilters
 ): Promise<PaginatedResponse<Usuario>> {
@@ -24,6 +56,26 @@ export async function createUsuario(payload: UsuarioCreate): Promise<Usuario> {
 
 export async function updateUsuarioActivo(id: number, activo: boolean): Promise<Usuario> {
   const { data } = await apiClient.patch<Usuario>(`/usuarios/${id}`, { activo })
+  return data
+}
+
+export async function patchUsuario(
+  id: number,
+  payload: { activo?: boolean; perfil_admin_id?: number | null },
+): Promise<Usuario> {
+  const { data } = await apiClient.patch<Usuario>(`/usuarios/${id}`, payload)
+  return data
+}
+
+/** Catálogo de perfiles (configurados por superadmin) para asignar a admins. */
+export async function fetchPerfilesAdminEmpresa(): Promise<EmpresaPerfilAdmin[]> {
+  const { data } = await apiClient.get<EmpresaPerfilAdmin[]>('/usuarios/perfiles-admin')
+  return data
+}
+
+/** Solo ADMIN: nueva contraseña sin conocer la anterior. */
+export async function resetUsuarioPassword(id: number, password: string): Promise<Usuario> {
+  const { data } = await apiClient.patch<Usuario>(`/usuarios/${id}/password`, { password })
   return data
 }
 

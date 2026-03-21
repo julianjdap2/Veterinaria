@@ -35,6 +35,8 @@ class Usuario(Base):
     
     empresa_id = Column(Integer, ForeignKey("empresas.id"))
 
+    perfil_admin_id = Column(Integer, ForeignKey("empresa_perfiles_admin.id", ondelete="SET NULL"), nullable=True)
+
     created_at = Column(
         TIMESTAMP,
         server_default=func.now()

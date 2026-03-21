@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useProductos } from '../productos/hooks/useProductos'
-import { useClientes } from '../clientes/hooks/useClientes'
+import { ClienteSearchSelect } from '../clientes/components/ClienteSearchSelect'
 import { useCreateVenta } from './hooks/useVentas'
 import { fetchConsultaById, fetchConsultasPorCliente, fetchFormula } from '../consultas/api'
 import { Card } from '../../shared/ui/Card'
@@ -10,6 +10,7 @@ import { Button } from '../../shared/ui/Button'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
+import { PAGE_SIZE_SELECT } from '../../core/listDefaults'
 import type { VentaItemCreate } from '../../api/types'
 import type { FormulaItem } from '../../api/types'
 
@@ -36,8 +37,6 @@ export function VentaNuevaPage() {
   const [checklist, setChecklist] = useState<ChecklistRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const { data: clientesData } = useClientes({ page: 1, page_size: 500 })
-  const clientes = clientesData?.items ?? []
   const { data: consultasDelCliente = [] } = useQuery({
     queryKey: ['consultas', 'por-cliente', clienteId],
     queryFn: () => fetchConsultasPorCliente(clienteId!),
@@ -54,7 +53,7 @@ export function VentaNuevaPage() {
     enabled: consultaId != null && (step === 'checklist' || !!stateConsultaId),
   })
   const { data: productosData } = useProductos(
-    { page: 1, page_size: 500, incluir_inactivos: false },
+    { page: 1, page_size: PAGE_SIZE_SELECT, incluir_inactivos: false },
     { enabled: formula.length > 0 }
   )
   const productos = productosData?.items ?? []
@@ -184,22 +183,13 @@ export function VentaNuevaPage() {
           <p className="text-sm text-slate-600 mb-3">
             Elige el cliente al que se le registrará la venta. Luego podrás elegir la consulta y la fórmula.
           </p>
-          <select
-            value={clienteId ?? ''}
-            onChange={(e) => {
-              setClienteId(e.target.value ? Number(e.target.value) : null)
+          <ClienteSearchSelect
+            value={clienteId}
+            onChange={(id) => {
+              setClienteId(id)
               setConsultaId(null)
             }}
-            className="w-full max-w-md rounded-xl border border-slate-300 px-3 py-2"
-          >
-            <option value="">Seleccionar propietario</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-                {c.email ? ` (${c.email})` : ''}
-              </option>
-            ))}
-          </select>
+          />
           <div className="mt-4">
             <Button
               onClick={() => clienteId != null && setStep('consulta')}

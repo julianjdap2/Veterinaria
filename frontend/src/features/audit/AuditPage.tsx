@@ -51,8 +51,8 @@ export function AuditPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Auditoría</h1>
 
-      <Card title="Filtros">
-        <div className="flex flex-wrap items-end gap-4">
+      <Card title="Filtros" clip={false} contentClassName="p-4">
+        <div className="flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
           <Input
             label="Tabla"
             placeholder="ej. clientes, mascotas"
@@ -61,7 +61,7 @@ export function AuditPage() {
               setTabla(e.target.value)
               setPage(1)
             }}
-            className="max-w-[180px]"
+            className="min-w-[160px] shrink-0"
           />
           <Input
             label="Usuario ID"
@@ -72,7 +72,7 @@ export function AuditPage() {
               setUsuarioId(e.target.value)
               setPage(1)
             }}
-            className="max-w-[120px]"
+            className="min-w-[110px] shrink-0"
           />
           <Input
             label="Desde"
@@ -82,7 +82,7 @@ export function AuditPage() {
               setFechaDesde(e.target.value)
               setPage(1)
             }}
-            className="max-w-[200px]"
+            className="min-w-[200px] shrink-0"
           />
           <Input
             label="Hasta"
@@ -92,10 +92,11 @@ export function AuditPage() {
               setFechaHasta(e.target.value)
               setPage(1)
             }}
-            className="max-w-[200px]"
+            className="min-w-[200px] shrink-0"
           />
           <Button
             variant="secondary"
+            className="mb-0.5 shrink-0"
             onClick={() => {
               setTabla('')
               setUsuarioId('')

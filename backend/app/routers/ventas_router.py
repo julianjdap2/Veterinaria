@@ -9,11 +9,14 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.security.dependencies import get_current_user
 from app.security.roles import require_roles
-from app.schemas.venta_schema import VentaCreate, VentaResponse
+from app.security.admin_permissions import require_admin_permission
+from app.security.feature_flags import require_feature
+from app.schemas.venta_schema import VentaCreate, VentaResponse, VentaDetalleAmpliadoResponse
 from app.services.venta_service import (
     crear_venta_service,
     listar_ventas_service,
     obtener_venta_service,
+    obtener_venta_ampliada_service,
 )
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
@@ -26,6 +29,8 @@ def crear_venta(
     payload: VentaCreate,
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_ventas")),
+    _feature=Depends(require_feature("modulo_ventas")),
 ):
     """Registra una venta con items; descuenta stock y opcionalmente vincula a consulta/cliente."""
     return crear_venta_service(
@@ -47,6 +52,8 @@ class VentasListResponse(BaseModel):
 def listar_ventas(
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_ventas")),
+    _feature=Depends(require_feature("modulo_ventas")),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     consulta_id: int | None = None,
@@ -67,11 +74,25 @@ def listar_ventas(
     )
 
 
+@router.get("/{venta_id}/detalle-ampliado", response_model=VentaDetalleAmpliadoResponse)
+def obtener_venta_detalle_ampliado(
+    venta_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_ventas")),
+    _feature=Depends(require_feature("modulo_ventas")),
+):
+    """Venta con cliente, mascota (vía consulta) y nombre de productos por ítem."""
+    return obtener_venta_ampliada_service(db, venta_id, current_user.empresa_id)
+
+
 @router.get("/{venta_id}", response_model=VentaResponse)
 def obtener_venta(
     venta_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_ventas")),
+    _feature=Depends(require_feature("modulo_ventas")),
 ):
     return obtener_venta_service(
         db=db,

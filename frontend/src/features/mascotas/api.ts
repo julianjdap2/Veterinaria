@@ -9,6 +9,8 @@ import type { PaginatedResponse, PaginationParams } from '../../core/types'
 export interface MascotasFilters extends PaginationParams {
   cliente_id?: number
   nombre?: string
+  /** Nombre mascota, nombre cliente o documento (OR) */
+  busqueda?: string
   incluir_inactivos?: boolean
 }
 

@@ -4,7 +4,9 @@ cron_router.py
 Endpoints para tareas programadas (cron). Protegidos por cabecera X-Cron-Secret.
 """
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
@@ -24,12 +26,21 @@ def _verificar_cron_secret(x_cron_secret: str | None = Header(None, alias="X-Cro
 
 @router.post(
     "/recordatorios-citas",
-    summary="Recordatorios de citas (mañana)",
-    description="Envía notificaciones por cada cita con fecha mañana. Llamar desde cron. Opcional: header X-Cron-Secret.",
+    summary="Recordatorios de citas (cron)",
+    description=(
+        "Envía recordatorios según la configuración de cada empresa "
+        "(`GET /empresa/config-notificaciones`): modo día calendario (por defecto: citas del día `fecha` o mañana) "
+        "o modo ventana en horas. Requiere cron periódico (ej. cada hora si usas ventana_horas). "
+        "Header opcional X-Cron-Secret."
+    ),
 )
 def ejecutar_recordatorios_citas(
     db: Session = Depends(get_db),
     _: bool = Depends(_verificar_cron_secret),
+    fecha: date | None = Query(
+        default=None,
+        description="Opcional: ejecutar recordatorios para la fecha indicada (YYYY-MM-DD). Si no se envía, usa mañana.",
+    ),
 ):
-    enviadas = enviar_recordatorios_citas_manana(db)
+    enviadas = enviar_recordatorios_citas_manana(db, fecha_objetivo=fecha)
     return {"enviadas": enviadas}

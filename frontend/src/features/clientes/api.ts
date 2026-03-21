@@ -9,6 +9,8 @@ import type { PaginatedResponse, PaginationParams } from '../../core/types'
 export interface ClientesFilters extends PaginationParams {
   nombre?: string
   documento?: string
+  /** Busca por nombre O documento (OR). Tiene prioridad sobre nombre/documento por separado. */
+  busqueda?: string
   incluir_inactivos?: boolean
 }
 

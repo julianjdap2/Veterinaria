@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useCreateUsuario } from './hooks/useUsuarios'
+import { useQuery } from '@tanstack/react-query'
+import { useCreateUsuario, useMisPermisosAdmin } from './hooks/useUsuarios'
+import { fetchPerfilesAdminEmpresa } from './api'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
@@ -15,12 +17,21 @@ export function UsuarioCreatePage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rolId, setRolId] = useState<number>(ROLES.RECEPCION)
+  const [perfilAdminId, setPerfilAdminId] = useState<number | ''>('')
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useCreateUsuario()
+  const { data: permisosAdmin, isLoading: loadingPermisos } = useMisPermisosAdmin()
+  const { data: perfilesAdmin } = useQuery({
+    queryKey: ['usuarios', 'perfiles-admin'],
+    queryFn: fetchPerfilesAdminEmpresa,
+    enabled: rolId === ROLES.ADMIN,
+  })
+  const canCreate = permisosAdmin?.admin_gestion_usuarios === true
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canCreate) return
     setError(null)
     if (!nombre.trim()) {
       setError('El nombre es obligatorio.')
@@ -38,7 +49,14 @@ export function UsuarioCreatePage() {
       return
     }
     mutation.mutate(
-      { nombre: nombre.trim(), email: email.trim(), password, rol_id: rolId },
+      {
+        nombre: nombre.trim(),
+        email: email.trim(),
+        password,
+        rol_id: rolId,
+        perfil_admin_id:
+          rolId === ROLES.ADMIN && perfilAdminId !== '' ? (perfilAdminId as number) : null,
+      },
       {
         onSuccess: () => {
           toast.success('Usuario creado correctamente')
@@ -58,6 +76,12 @@ export function UsuarioCreatePage() {
       <h1 className="text-2xl font-bold text-gray-900">Nuevo usuario</h1>
       <Card title="Datos del usuario">
         <form onSubmit={handleSubmit} className="max-w-2xl space-y-4">
+          {!loadingPermisos && permisosAdmin && !permisosAdmin.admin_gestion_usuarios ? (
+            <Alert variant="warning">
+              No tienes permiso para crear usuarios. Contacta al superadmin o a un administrador con gestión de
+              usuarios habilitada.
+            </Alert>
+          ) : null}
           {error && (
             <Alert variant="error" onDismiss={() => setError(null)}>
               {error}
@@ -70,7 +94,7 @@ export function UsuarioCreatePage() {
               onChange={(e) => setNombre(e.target.value)}
               required
               placeholder="Nombre completo"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || !canCreate || loadingPermisos}
             />
             <Input
               type="email"
@@ -79,7 +103,7 @@ export function UsuarioCreatePage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="email@ejemplo.com"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || !canCreate || loadingPermisos}
             />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -91,7 +115,7 @@ export function UsuarioCreatePage() {
               required
               minLength={8}
               placeholder="Mín. 8 caracteres"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || !canCreate || loadingPermisos}
             />
             <div className="w-full">
               <label htmlFor="rol" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -100,8 +124,12 @@ export function UsuarioCreatePage() {
               <select
                 id="rol"
                 value={rolId}
-                onChange={(e) => setRolId(Number(e.target.value))}
-                disabled={mutation.isPending}
+                onChange={(e) => {
+                  const r = Number(e.target.value)
+                  setRolId(r)
+                  if (r !== ROLES.ADMIN) setPerfilAdminId('')
+                }}
+                disabled={mutation.isPending || !canCreate || loadingPermisos}
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
               >
                 <option value={ROLES.ADMIN}>{ROL_LABELS[ROLES.ADMIN]}</option>
@@ -110,8 +138,36 @@ export function UsuarioCreatePage() {
               </select>
             </div>
           </div>
+          {rolId === ROLES.ADMIN ? (
+            <div className="w-full max-w-xl">
+              <label htmlFor="perfil-admin" className="mb-1.5 block text-sm font-medium text-slate-700">
+                Perfil de permisos admin (opcional)
+              </label>
+              <select
+                id="perfil-admin"
+                value={perfilAdminId === '' ? '' : String(perfilAdminId)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setPerfilAdminId(v === '' ? '' : Number(v))
+                }}
+                disabled={mutation.isPending || !canCreate || loadingPermisos}
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                <option value="">Sin perfil — usar plantilla de empresa</option>
+                {(perfilesAdmin ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre} ({p.slug})
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Los perfiles los define el superadmin en Empresas. Si no eliges uno, aplican los permisos por defecto de
+                la empresa.
+              </p>
+            </div>
+          ) : null}
           <div className="flex gap-2 pt-1">
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" disabled={mutation.isPending || !canCreate || loadingPermisos}>
               {mutation.isPending ? 'Creando...' : 'Crear usuario'}
             </Button>
             <Button

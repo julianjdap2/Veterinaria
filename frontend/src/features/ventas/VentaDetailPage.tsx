@@ -1,27 +1,21 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { useVentaDetail } from './hooks/useVentas'
+import { formatVentaFecha } from './formatVentaFecha'
 import { Card } from '../../shared/ui/Card'
-
-function formatDate(s: string | null): string {
-  if (!s) return '—'
-  try {
-    return new Date(s).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })
-  } catch {
-    return s
-  }
-}
 
 export function VentaDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
   const ventaId = id ? parseInt(id, 10) : null
   const { data: venta, isLoading, isError } = useVentaDetail(ventaId)
+  const backTo = (location.state as { from?: string } | null)?.from ?? '/ventas'
 
   if (ventaId == null || isError || (!isLoading && !venta)) {
     return (
       <div className="space-y-4">
         <p className="text-red-600">Venta no encontrada.</p>
-        <Link to="/ventas" className="text-primary-600 hover:underline text-sm">
-          ← Volver a ventas
+        <Link to={backTo} className="text-primary-600 hover:underline text-sm">
+          ← Volver
         </Link>
       </div>
     )
@@ -33,19 +27,45 @@ export function VentaDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/ventas" className="text-primary-600 hover:underline text-sm">
-        ← Volver a ventas
+      <Link to={backTo} className="text-primary-600 hover:underline text-sm">
+        ← Volver
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900">Venta #{venta.id}</h1>
+      <h1 className="text-2xl font-bold text-gray-900">
+        {venta.codigo_interno ?? 'Venta'}
+      </h1>
+      <div className="flex gap-2">
+        <Link
+          to="/ventas/pos"
+          state={{ ventaOrigenId: venta.id, tipoOperacion: 'cambio' }}
+          className="text-amber-700 hover:underline text-sm"
+        >
+          Iniciar cambio (CYD)
+        </Link>
+        <Link
+          to="/ventas/pos"
+          state={{ ventaOrigenId: venta.id, tipoOperacion: 'devolucion' }}
+          className="text-red-700 hover:underline text-sm"
+        >
+          Iniciar devolucion (CYD)
+        </Link>
+      </div>
       <Card title="Detalle">
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-gray-500">Fecha</dt>
-            <dd>{formatDate(venta.fecha)}</dd>
+            <dd>{formatVentaFecha(venta.fecha)}</dd>
           </div>
           <div>
             <dt className="text-gray-500">Total</dt>
             <dd className="font-medium">{venta.total != null ? Number(venta.total).toFixed(2) : '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Tipo</dt>
+            <dd>{venta.tipo_operacion ?? 'venta'}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Metodo pago</dt>
+            <dd>{venta.metodo_pago ?? 'efectivo'}</dd>
           </div>
           {venta.consulta_id != null && (
             <div>

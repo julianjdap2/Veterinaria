@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.security.roles import require_roles
+from app.security.admin_permissions import require_admin_permission
 from app.repositories.audit_repository import listar_audit_logs
 from app.schemas.audit_schema import AuditLogResponse
 from app.schemas.common_schema import PaginatedResponse
@@ -33,7 +34,8 @@ def listar_audit(
     page: int = 1,
     page_size: int = 50,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(1)),
+    current_user=Depends(require_roles(1, 4)),
+    _perm=Depends(require_admin_permission("admin_ver_auditoria")),
 ):
     items, total = listar_audit_logs(
         db,

@@ -4,7 +4,7 @@ venta.py
 Ventas de productos (medicamentos/insumos). Opcionalmente vinculadas a consulta o cliente.
 """
 
-from sqlalchemy import Column, Integer, Numeric, ForeignKey, TIMESTAMP, DateTime
+from sqlalchemy import Column, Integer, Numeric, ForeignKey, DateTime, String, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -20,12 +20,19 @@ class Venta(Base):
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True)
     consulta_id = Column(Integer, ForeignKey("consultas.id"), nullable=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)  # quien registró
+    metodo_pago = Column(String(30), nullable=False, default="efectivo")
+    tipo_operacion = Column(String(20), nullable=False, default="venta")
+    venta_origen_id = Column(Integer, ForeignKey("ventas.id"), nullable=True)
+    motivo_cyd = Column(Text, nullable=True)
     total = Column(Numeric(12, 2), nullable=True)
+    # Número de venta interno (prefijo + consecutivo al momento de crear)
+    codigo_interno = Column(String(64), nullable=True)
 
     empresa = relationship("Empresa")
     cliente = relationship("Cliente")
     consulta = relationship("Consulta")
     usuario = relationship("Usuario")
+    venta_origen = relationship("Venta", remote_side=[id], uselist=False)
     items = relationship("VentaItem", back_populates="venta", cascade="all, delete-orphan")
 
 

@@ -13,6 +13,18 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 Documentación interactiva: **http://127.0.0.1:8000/docs**
 
+### Migraciones (Alembic)
+
+Tras actualizar el código, aplica cambios de esquema en MySQL:
+
+```bash
+cd backend
+venv\Scripts\activate
+alembic upgrade head
+```
+
+Ej.: `021` añade `ventas.codigo_interno` y consecutivo en `empresa_configuraciones`; `022` añade `notificaciones_json` y `notification_logs.cita_id`.
+
 ## Variables de entorno (.env)
 
 | Variable | Obligatoria | Descripción |
@@ -50,6 +62,9 @@ Programa esta llamada en el Programador de tareas (Windows) o cron a la hora des
 - **/mascotas** – CRUD por empresa con paginación (VETERINARIO/RECEPCIÓN creación).
 - **/consultas** – Historial clínico por mascota; creación (VETERINARIO).
 - **/citas** – Agenda: listar por mascota o por rango de fechas; crear/actualizar (VETERINARIO/RECEPCIÓN).
+- **/empresa/config-operativa** – Tipos de servicio (agenda) y parámetros de numeración de ventas (GET todos los roles; PATCH solo ADMIN con `admin_configuracion_empresa`).
+- **/empresa/config-notificaciones** – Recordatorios de citas: plantillas, modos, canales (GET tenant; PATCH ADMIN + permiso configuración).
+- **/ventas/{id}/detalle-ampliado** – Venta con cliente, mascota vía consulta y nombres de producto.
 
 Todos los endpoints (salvo `/`, `/health` y `/auth/login`) requieren cabecera `Authorization: Bearer <token>`.
 

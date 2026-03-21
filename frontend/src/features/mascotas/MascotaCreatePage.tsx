@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useClientes } from '../clientes/hooks/useClientes'
+import { ClienteSearchSelect } from '../clientes/components/ClienteSearchSelect'
 import { useEspecies } from '../catalogo/hooks/useEspecies'
 import { useRazas } from '../catalogo/hooks/useRazas'
 import { createMascota } from './api'
@@ -17,7 +17,7 @@ export function MascotaCreatePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [nombre, setNombre] = useState('')
-  const [clienteId, setClienteId] = useState('')
+  const [clienteId, setClienteId] = useState<number | null>(null)
   const [especieId, setEspecieId] = useState<string>('')
   const [razaId, setRazaId] = useState<string>('')
   const [sexo, setSexo] = useState('')
@@ -27,7 +27,6 @@ export function MascotaCreatePage() {
   const [alergias, setAlergias] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { data: clientesData } = useClientes({ page: 1, page_size: 500 })
   const { data: especies = [] } = useEspecies()
   const { data: razas = [] } = useRazas(especieId ? parseInt(especieId, 10) : null)
 
@@ -53,8 +52,8 @@ export function MascotaCreatePage() {
       toast.warning('El nombre es obligatorio.')
       return
     }
-    const cId = parseInt(clienteId, 10)
-    if (!clienteId || Number.isNaN(cId)) {
+    const cId = clienteId
+    if (cId == null || cId <= 0) {
       setError('Debes seleccionar un cliente.')
       toast.warning('Debes seleccionar un cliente.')
       return
@@ -71,8 +70,6 @@ export function MascotaCreatePage() {
       alergias: alergias.trim() || undefined,
     })
   }
-
-  const clientes = clientesData?.items ?? []
 
   return (
     <div className="space-y-6">
@@ -97,20 +94,11 @@ export function MascotaCreatePage() {
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
                 Cliente <span className="text-red-500">*</span>
               </label>
-              <select
+              <ClienteSearchSelect
                 value={clienteId}
-                onChange={(e) => setClienteId(e.target.value)}
-                required
+                onChange={setClienteId}
                 disabled={mutation.isPending}
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-              >
-                <option value="">Seleccionar cliente</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} {c.documento ? `(${c.documento})` : ''}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

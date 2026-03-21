@@ -1,5 +1,5 @@
 import apiClient from '../../api/client'
-import type { Venta, VentaCreate } from '../../api/types'
+import type { Venta, VentaCreate, VentaDetalleAmpliado } from '../../api/types'
 
 export interface VentasListParams {
   page?: number
@@ -21,6 +21,11 @@ export async function fetchVentas(params: VentasListParams = {}): Promise<Ventas
 
 export async function fetchVentaById(id: number): Promise<Venta> {
   const { data } = await apiClient.get<Venta>(`/ventas/${id}`)
+  return data
+}
+
+export async function fetchVentaDetalleAmpliado(id: number): Promise<VentaDetalleAmpliado> {
+  const { data } = await apiClient.get<VentaDetalleAmpliado>(`/ventas/${id}/detalle-ampliado`)
   return data
 }
 

@@ -32,10 +32,16 @@ def listar_clientes_por_empresa_service(
     solo_activos: bool = True,
     nombre: str | None = None,
     documento: str | None = None,
+    busqueda: str | None = None,
 ) -> tuple[list, int]:
     """Lista clientes de la empresa con paginación; devuelve (items, total)."""
     total = count_clientes_por_empresa(
-        db, empresa_id, solo_activos=solo_activos, nombre=nombre, documento=documento
+        db,
+        empresa_id,
+        solo_activos=solo_activos,
+        nombre=nombre,
+        documento=documento,
+        busqueda=busqueda,
     )
     items = listar_clientes_por_empresa(
         db=db,
@@ -45,6 +51,7 @@ def listar_clientes_por_empresa_service(
         solo_activos=solo_activos,
         nombre=nombre,
         documento=documento,
+        busqueda=busqueda,
     )
     return items, total
 

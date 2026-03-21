@@ -36,6 +36,7 @@ class NotificationMessage:
     body: str
     to_email: str | None = None
     attachments: list[Attachment] | None = None
+    reply_to: str | None = None
 
 
 class NotificationSender(Protocol):
@@ -90,6 +91,8 @@ class SMTPNotificationSender:
         msg["Subject"] = message.subject
         msg["From"] = self.from_email
         msg["To"] = message.to_email
+        if getattr(message, "reply_to", None) and message.reply_to:
+            msg["Reply-To"] = message.reply_to
         msg.attach(MIMEText(message.body, "plain", "utf-8"))
         if getattr(message, "attachments", None):
             for att in message.attachments:

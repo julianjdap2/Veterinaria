@@ -18,6 +18,8 @@ from app.services.mascota_service import (
     obtener_mascota_por_empresa,
     actualizar_activo_mascota_service,
     eliminar_mascota_por_empresa,
+    mascotas_a_response_con_cliente_nombre,
+    mascota_a_response_con_cliente_nombre,
 )
 
 router = APIRouter(prefix="/mascotas", tags=["Mascotas"])
@@ -31,7 +33,8 @@ def crear_mascota_endpoint(
 ):
     data = mascota.model_dump()  # Pydantic v2
     data["empresa_id"] = current_user.empresa_id
-    return crear_mascota(db, data)
+    m = crear_mascota(db, data)
+    return mascota_a_response_con_cliente_nombre(db, m)
 
 
 @router.get("/", response_model=PaginatedResponse[MascotaResponse])
@@ -40,10 +43,12 @@ def listar_mascotas(
     page_size: int = 20,
     cliente_id: int | None = None,
     nombre: str | None = None,
+    busqueda: str | None = None,
     incluir_inactivos: bool = False,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """Si `busqueda` tiene valor, filtra por nombre de mascota, nombre de cliente o documento (OR)."""
     items, total = listar_mascotas_por_empresa(
         db=db,
         empresa_id=current_user.empresa_id,
@@ -52,8 +57,10 @@ def listar_mascotas(
         solo_activas=not incluir_inactivos,
         cliente_id=cliente_id,
         nombre=nombre,
+        busqueda=busqueda,
     )
-    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+    out = mascotas_a_response_con_cliente_nombre(db, items)
+    return PaginatedResponse(items=out, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{mascota_id}", response_model=MascotaResponse)
@@ -62,11 +69,12 @@ def obtener_mascota(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return obtener_mascota_por_empresa(
+    m = obtener_mascota_por_empresa(
         db=db,
         mascota_id=mascota_id,
         empresa_id=current_user.empresa_id,
     )
+    return mascota_a_response_con_cliente_nombre(db, m)
 
 
 @router.patch("/{mascota_id}", response_model=MascotaResponse)
@@ -78,17 +86,19 @@ def actualizar_mascota(
 ):
     """Permite reactivar (activo=true) o desactivar (activo=false) la mascota."""
     if payload.activo is None:
-        return obtener_mascota_por_empresa(
+        m = obtener_mascota_por_empresa(
             db=db,
             mascota_id=mascota_id,
             empresa_id=current_user.empresa_id,
         )
-    return actualizar_activo_mascota_service(
+        return mascota_a_response_con_cliente_nombre(db, m)
+    m = actualizar_activo_mascota_service(
         db=db,
         mascota_id=mascota_id,
         empresa_id=current_user.empresa_id,
         activo=payload.activo,
     )
+    return mascota_a_response_con_cliente_nombre(db, m)
 
 
 @router.delete("/{mascota_id}", response_model=MascotaResponse)
@@ -97,8 +107,9 @@ def eliminar_mascota(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
-    return eliminar_mascota_por_empresa(
+    m = eliminar_mascota_por_empresa(
         db=db,
         mascota_id=mascota_id,
         empresa_id=current_user.empresa_id,
     )
+    return mascota_a_response_con_cliente_nombre(db, m)

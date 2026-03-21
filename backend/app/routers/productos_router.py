@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.security.dependencies import get_current_user
 from app.security.roles import require_roles
+from app.security.admin_permissions import require_admin_permission
+from app.security.feature_flags import require_feature
 from app.schemas.producto_schema import (
     ProductoCreate,
     ProductoUpdate,
@@ -37,6 +39,7 @@ _lectura_productos = require_roles(1, 2, 3)  # todos los roles pueden listar/ver
 def listar_categorias_producto(
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_inventario")),
 ):
     """Lista categorías de productos de la empresa (para selector al crear/editar producto)."""
     return listar_categorias(db, current_user.empresa_id)
@@ -47,6 +50,7 @@ def crear_categoria_producto(
     payload: CategoriaProductoCreate,
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_inventario")),
 ):
     """Crea una categoría de productos (ej. Medicamento, Insumo, Alimento)."""
     return crear_categoria(db, current_user.empresa_id, payload.nombre.strip())
@@ -56,6 +60,7 @@ def crear_categoria_producto(
 def listar_productos(
     db: Session = Depends(get_db),
     current_user=Depends(_lectura_productos),
+    _feature=Depends(require_feature("modulo_inventario")),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     search: str | None = None,
@@ -81,7 +86,12 @@ def listar_productos(
 
 
 @router.get("/plantilla-csv")
-def descargar_plantilla_csv(current_user=Depends(_recep_admin)):
+def descargar_plantilla_csv(
+    current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_inventario")),
+    _perm_bulk=Depends(require_admin_permission("admin_carga_masiva_inventario")),
+    _feature=Depends(require_feature("modulo_inventario")),
+):
     """Devuelve un CSV de ejemplo para carga masiva. Columnas: nombre, cod_articulo, ean, fabricante, presentacion, tipo, unidad, precio, stock_inicial, stock_minimo, categoria."""
     headers = "nombre,cod_articulo,ean,fabricante,presentacion,tipo,unidad,precio,stock_inicial,stock_minimo,categoria\n"
     ejemplo = "Paracetamol 500mg,PAR500,7501234567890,Genérico,500mg x 30 comp,medicamento,unidad,5.50,100,10,Medicamento\n"
@@ -98,6 +108,9 @@ def carga_masiva_productos(
     archivo: UploadFile,
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_inventario")),
+    _perm_bulk=Depends(require_admin_permission("admin_carga_masiva_inventario")),
+    _feature=Depends(require_feature("modulo_inventario")),
 ):
     """Carga productos desde un CSV. La primera fila debe ser encabezado. Nombre obligatorio por fila."""
     if not archivo.filename or not (archivo.filename.lower().endswith(".csv") or "csv" in (archivo.content_type or "")):
@@ -112,6 +125,7 @@ def obtener_producto(
     producto_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(_lectura_productos),
+    _feature=Depends(require_feature("modulo_inventario")),
 ):
     return obtener_producto_service(
         db=db,
@@ -125,6 +139,8 @@ def crear_producto(
     payload: ProductoCreate,
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_inventario")),
+    _feature=Depends(require_feature("modulo_inventario")),
 ):
     return crear_producto_service(
         db=db,
@@ -139,6 +155,8 @@ def actualizar_producto(
     payload: ProductoUpdate,
     db: Session = Depends(get_db),
     current_user=Depends(_recep_admin),
+    _perm=Depends(require_admin_permission("admin_gestion_inventario")),
+    _feature=Depends(require_feature("modulo_inventario")),
 ):
     datos = payload.model_dump(exclude_unset=True)
     return actualizar_producto_service(

@@ -3,13 +3,25 @@ interface CardProps {
   children: React.ReactNode
   className?: string
   actions?: React.ReactNode
+  /** Si false, no recorta contenido (evita cortar botones en layouts con scroll interno). */
+  clip?: boolean
+  /** Clases del contenedor interno (por defecto `p-5`). */
+  contentClassName?: string
 }
 
-export function Card({ title, children, className = '', actions }: CardProps) {
+export function Card({
+  title,
+  children,
+  className = '',
+  actions,
+  clip = true,
+  contentClassName = 'p-5',
+}: CardProps) {
   return (
     <div
       className={`
-        rounded-2xl border border-slate-200/70 bg-white/90 backdrop-blur shadow-card overflow-hidden
+        rounded-2xl border border-slate-200/70 bg-white/90 backdrop-blur shadow-card
+        ${clip ? 'overflow-hidden' : 'overflow-visible'}
         transition-all duration-300 hover:shadow-card-hover
         ${className}
       `}
@@ -20,7 +32,7 @@ export function Card({ title, children, className = '', actions }: CardProps) {
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
-      <div className="p-5">{children}</div>
+      <div className={contentClassName}>{children}</div>
     </div>
   )
 }

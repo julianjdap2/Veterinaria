@@ -51,9 +51,15 @@ export function TableTh({
 export function TableTd({
   children,
   className = '',
+  colSpan,
 }: {
   children: React.ReactNode
   className?: string
+  colSpan?: number
 }) {
-  return <td className={`px-4 py-3 text-sm text-slate-900 ${className}`}>{children}</td>
+  return (
+    <td colSpan={colSpan} className={`px-4 py-3 text-sm text-slate-900 ${className}`}>
+      {children}
+    </td>
+  )
 }

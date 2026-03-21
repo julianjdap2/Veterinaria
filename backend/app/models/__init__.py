@@ -16,3 +16,7 @@ from .empresa import Empresa
 from .plan import Plan
 from .suscripcion import Suscripcion
 from .audit_log import AuditLog
+from .lista_espera import ListaEspera
+from .notification_log import NotificationLog
+from .empresa_admin_permiso import EmpresaAdminPermiso
+from .empresa_configuracion import EmpresaConfiguracion

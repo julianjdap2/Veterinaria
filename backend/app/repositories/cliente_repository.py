@@ -5,6 +5,7 @@ Acceso a datos de la tabla clientes. Todas las lecturas deben filtrar por
 empresa_id para mantener aislamiento multi-tenant.
 """
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.cliente import Cliente
@@ -32,16 +33,26 @@ def listar_clientes_por_empresa(
     solo_activos: bool = True,
     nombre: str | None = None,
     documento: str | None = None,
+    busqueda: str | None = None,
 ) -> list[Cliente]:
     """Lista clientes de una empresa con paginación y filtros opcionales."""
     offset = (page - 1) * page_size
     q = db.query(Cliente).filter(Cliente.empresa_id == empresa_id)
     if solo_activos:
         q = q.filter(Cliente.activo.is_(True))
-    if nombre is not None and nombre.strip():
-        q = q.filter(Cliente.nombre.ilike(f"%{nombre.strip()}%"))
-    if documento is not None and documento.strip():
-        q = q.filter(Cliente.documento.ilike(f"%{documento.strip()}%"))
+    if busqueda is not None and busqueda.strip():
+        term = f"%{busqueda.strip()}%"
+        q = q.filter(
+            or_(
+                Cliente.nombre.ilike(term),
+                Cliente.documento.ilike(term),
+            )
+        )
+    else:
+        if nombre is not None and nombre.strip():
+            q = q.filter(Cliente.nombre.ilike(f"%{nombre.strip()}%"))
+        if documento is not None and documento.strip():
+            q = q.filter(Cliente.documento.ilike(f"%{documento.strip()}%"))
     return q.order_by(Cliente.id.desc()).offset(offset).limit(page_size).all()
 
 
@@ -115,13 +126,23 @@ def count_clientes_por_empresa(
     solo_activos: bool = True,
     nombre: str | None = None,
     documento: str | None = None,
+    busqueda: str | None = None,
 ) -> int:
     """Cuenta clientes de la empresa (para paginación con total)."""
     q = db.query(Cliente).filter(Cliente.empresa_id == empresa_id)
     if solo_activos:
         q = q.filter(Cliente.activo.is_(True))
-    if nombre is not None and nombre.strip():
-        q = q.filter(Cliente.nombre.ilike(f"%{nombre.strip()}%"))
-    if documento is not None and documento.strip():
-        q = q.filter(Cliente.documento.ilike(f"%{documento.strip()}%"))
+    if busqueda is not None and busqueda.strip():
+        term = f"%{busqueda.strip()}%"
+        q = q.filter(
+            or_(
+                Cliente.nombre.ilike(term),
+                Cliente.documento.ilike(term),
+            )
+        )
+    else:
+        if nombre is not None and nombre.strip():
+            q = q.filter(Cliente.nombre.ilike(f"%{nombre.strip()}%"))
+        if documento is not None and documento.strip():
+            q = q.filter(Cliente.documento.ilike(f"%{documento.strip()}%"))
     return q.count()

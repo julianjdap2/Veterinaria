@@ -59,7 +59,9 @@ def crear_consulta_service(
                 message="La cita debe estar confirmada para iniciar la consulta",
                 status_code=400,
             )
-        actualizar_cita(db, cita, {"estado": "revision"})
+        # Asignación automática: cuando el veterinario inicia la consulta desde
+        # la cita confirmada, la cita queda asignada a ese veterinario.
+        actualizar_cita(db, cita, {"estado": "revision", "veterinario_id": veterinario_id})
 
         copy_cita_formula_to_consulta(
             db=db,
@@ -122,6 +124,8 @@ def crear_consulta_con_formula_service(
         # Cuando inicia la consulta, pasamos a revisión.
         if estado_cita == "confirmada":
             cita.estado = "revision"
+        # Asignación automática del veterinario para trazabilidad del turno.
+        cita.veterinario_id = veterinario_id
 
     datos_creacion = {
         **datos,

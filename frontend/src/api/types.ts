@@ -40,6 +40,8 @@ export interface Mascota {
   activo: boolean
   nombre: string
   cliente_id: number
+  /** Presente en listados API enriquecidos */
+  cliente_nombre?: string | null
   especie_id: number | null
   raza_id: number | null
   sexo: string | null
@@ -64,9 +66,14 @@ export interface MascotaCreate {
 export interface Cita {
   id: number
   mascota_id: number
+  mascota_nombre?: string | null
   veterinario_id: number | null
+  veterinario_nombre?: string | null
   fecha: string | null
   motivo: string | null
+  notas: string | null
+  urgente: boolean
+  en_sala_espera: boolean
   estado: string | null
 }
 
@@ -74,14 +81,146 @@ export interface CitaCreate {
   mascota_id: number
   fecha?: string | null
   motivo?: string | null
+  notas?: string | null
   estado?: string | null
+  veterinario_id?: number | null
+  urgente?: boolean
+  en_sala_espera?: boolean
+}
+
+export interface CitasDisponibilidad {
+  fecha: string // 'YYYY-MM-DD'
+  veterinario_id: number
+  disponible: string[] // ['08:00', '08:30', ...]
+  reservado: string[]
 }
 
 export interface CitaUpdate {
   fecha?: string | null
   motivo?: string | null
+  notas?: string | null
   estado?: string | null
   veterinario_id?: number | null
+  urgente?: boolean | null
+  en_sala_espera?: boolean | null
+}
+
+export interface CitaRecurrenteCreate {
+  mascota_id: number
+  fecha_inicio: string // 'YYYY-MM-DDTHH:mm:ss'
+  veterinario_id: number
+  motivo?: string | null
+  notas?: string | null
+  urgente?: boolean
+  repeticiones: number
+  intervalo_semana: number
+  crear_waitlist_en_conflicto?: boolean
+}
+
+export interface CitaLlegadaCreate {
+  mascota_id: number
+  motivo?: string | null
+  notas?: string | null
+  urgente?: boolean
+  veterinario_preferido_id?: number | null
+  fecha_llegada?: string | null
+}
+
+export interface CitasRecurrentesResponse {
+  created_ids: number[]
+  skipped: Array<{ fecha: string; message: string; code?: string; status_code?: number }>
+  waitlist_ids: number[]
+}
+
+export interface ListaEsperaCreate {
+  mascota_id: number
+  veterinario_id: number
+  fecha: string // 'YYYY-MM-DDTHH:mm:ss'
+  motivo?: string | null
+  notas?: string | null
+  urgente?: boolean
+}
+
+export interface ListaEsperaResponse {
+  id: number
+  empresa_id: number
+  mascota_id: number
+  veterinario_id: number
+  fecha: string
+  urgente: boolean
+  motivo?: string | null
+  notas?: string | null
+  estado: string
+  procesada: boolean
+  created_at: string
+  procesada_en?: string | null
+  cita_id?: number | null
+}
+
+export interface DashboardTopVeterinario {
+  veterinario_id: number
+  nombre: string
+  citas: number
+}
+
+export interface DashboardSerieDia {
+  fecha: string
+  atendidas: number
+}
+
+export interface DashboardSerieVentasDia {
+  fecha: string
+  ventas: number
+  ingresos: number
+}
+
+export interface DashboardTopProducto {
+  producto_id: number
+  nombre: string
+  unidades: number
+  ingresos: number
+}
+
+export interface DashboardTopTexto {
+  texto: string
+  cantidad: number
+}
+
+export interface DashboardResumen {
+  total_hoy: number
+  pendientes_hoy: number
+  confirmadas_hoy: number
+  en_revision_hoy: number
+  atendidas_hoy: number
+  canceladas_hoy: number
+  urgentes_hoy: number
+  en_sala_espera_ahora: number
+  espera_promedio_min_hoy: number
+  ventas_hoy: number
+  ingresos_hoy: number
+  ticket_promedio_hoy: number
+  ventas_ultimos_7_dias: DashboardSerieVentasDia[]
+  top_productos_hoy: DashboardTopProducto[]
+  notificaciones_email_hoy: number
+  notificaciones_sms_hoy: number
+  notificaciones_whatsapp_hoy: number
+  notificaciones_fallidas_hoy: number
+  consultas_totales_periodo: number
+  top_motivos_consulta: DashboardTopTexto[]
+  top_tratamientos: DashboardTopTexto[]
+  top_veterinarios_hoy: DashboardTopVeterinario[]
+  atendidas_ultimos_7_dias: DashboardSerieDia[]
+}
+
+export interface DashboardNotificationLog {
+  id: number
+  canal: string
+  tipo_evento: string
+  destino?: string | null
+  estado: string
+  proveedor?: string | null
+  error?: string | null
+  created_at: string
 }
 
 export interface Consulta {
@@ -129,6 +268,7 @@ export interface ResumenConsulta {
   motivo_consulta: string
   diagnostico: string
   tratamiento: string
+  notas_cita: string
   observaciones: string
 }
 
@@ -199,6 +339,10 @@ export interface VentaItemCreate {
 export interface VentaCreate {
   cliente_id?: number | null
   consulta_id?: number | null
+  metodo_pago?: 'efectivo' | 'tarjeta' | 'transferencia_qr' | 'cyd'
+  tipo_operacion?: 'venta' | 'cambio' | 'devolucion'
+  venta_origen_id?: number | null
+  motivo_cyd?: string | null
   items: VentaItemCreate[]
 }
 
@@ -217,9 +361,66 @@ export interface Venta {
   cliente_id: number | null
   consulta_id: number | null
   usuario_id: number | null
+  metodo_pago?: string | null
+  tipo_operacion?: string | null
+  venta_origen_id?: number | null
+  motivo_cyd?: string | null
   total: string | number | null
+  codigo_interno?: string | null
   items: VentaItemResponse[]
 }
+
+export interface VentaItemAmpliadoResponse extends VentaItemResponse {
+  producto_nombre?: string | null
+}
+
+export interface VentaDetalleAmpliado extends Venta {
+  cliente_nombre?: string | null
+  cliente_documento?: string | null
+  mascota_nombre?: string | null
+  items: VentaItemAmpliadoResponse[]
+}
+
+export interface TipoServicioCita {
+  id: string
+  label: string
+  duracion_min: number
+  allow_urgente: boolean
+  allow_recurrente: boolean
+  categoria: string
+}
+
+export interface ConfigOperativa {
+  tipos_servicio: TipoServicioCita[]
+  venta_prefijo: string
+  venta_siguiente_numero: number
+  venta_numero_padding: number
+  timezone?: string | null
+}
+
+export interface ConfigOperativaUpdate {
+  tipos_servicio?: TipoServicioCita[]
+  venta_prefijo?: string | null
+  venta_numero_padding?: number | null
+}
+
+export type RecordatorioModo = 'dia_calendario' | 'ventana_horas'
+
+export interface NotificacionesConfig {
+  recordatorio_modo: RecordatorioModo
+  recordatorio_horas_antes: number
+  recordatorio_ventana_horas: number
+  canal_email: boolean
+  canal_sms: boolean
+  canal_whatsapp: boolean
+  plantilla_email_asunto: string
+  plantilla_email_cuerpo: string
+  plantilla_sms_cuerpo: string
+  max_envios_recordatorio_dia: number | null
+  reply_to_email: string | null
+}
+
+export type NotificacionesConfigUpdate = Partial<NotificacionesConfig>
 
 export interface Especie {
   id: number
@@ -240,6 +441,7 @@ export interface Usuario {
   nombre: string
   email: string
   rol_id: number
+  perfil_admin_id?: number | null
 }
 
 export interface UsuarioCreate {
@@ -247,6 +449,7 @@ export interface UsuarioCreate {
   email: string
   rol_id: number
   password: string
+  perfil_admin_id?: number | null
 }
 
 export interface AuditLog {

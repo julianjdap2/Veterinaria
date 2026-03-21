@@ -8,6 +8,9 @@ import {
   uploadCargaMasivaProductos,
   downloadPlantillaCsv,
 } from './api'
+import { useAuthStore } from '../../core/auth-store'
+import { ROLES } from '../../core/constants'
+import { useMisPermisosAdmin } from '../usuarios/hooks/useUsuarios'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
@@ -38,6 +41,12 @@ const defaultForm: ProductoCreate = {
 }
 
 export function ProductosListPage() {
+  const authUser = useAuthStore((s) => s.user)
+  const isTenantAdmin = authUser?.rolId === ROLES.ADMIN
+  const { data: permisosAdmin } = useMisPermisosAdmin({ enabled: isTenantAdmin })
+  const canCargaMasiva =
+    !isTenantAdmin || permisosAdmin?.admin_carga_masiva_inventario === true
+
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [categoriaId, setCategoriaId] = useState<number | ''>('')
@@ -162,18 +171,18 @@ export function ProductosListPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Inventario</h1>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
           <input
             type="text"
             placeholder="Buscar (nombre, EAN, código, fabricante)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm w-64"
+            className="min-w-[200px] shrink-0 rounded-xl border border-slate-300 px-3 py-2 text-sm sm:w-64"
           />
           <select
             value={categoriaId}
             onChange={(e) => setCategoriaId(e.target.value === '' ? '' : Number(e.target.value))}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            className="min-w-[160px] shrink-0 rounded-xl border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="">Todas las categorías</option>
             {categorias.map((c) => (
@@ -191,23 +200,27 @@ export function ProductosListPage() {
             Incluir inactivos
           </label>
           <Button onClick={() => setShowForm(true)}>Nuevo producto</Button>
-          <Button variant="secondary" onClick={handleDescargarPlantilla} disabled={uploadingCsv}>
-            Descargar plantilla CSV
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleFileCargaMasiva}
-          />
-          <Button
-            variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadingCsv}
-          >
-            {uploadingCsv ? 'Cargando...' : 'Cargar desde CSV'}
-          </Button>
+          {canCargaMasiva ? (
+            <>
+              <Button variant="secondary" onClick={handleDescargarPlantilla} disabled={uploadingCsv}>
+                Descargar plantilla CSV
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleFileCargaMasiva}
+              />
+              <Button
+                variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingCsv}
+              >
+                {uploadingCsv ? 'Cargando...' : 'Cargar desde CSV'}
+              </Button>
+            </>
+          ) : null}
           <Link to="/ventas/nueva">
             <Button variant="secondary">Nueva venta</Button>
           </Link>

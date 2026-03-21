@@ -65,3 +65,13 @@ def update_usuario_activo(db: Session, usuario_id: int, empresa_id: int, activo:
     db.commit()
     db.refresh(usuario)
     return usuario
+
+
+def update_usuario_password_hash(db: Session, usuario_id: int, empresa_id: int, password_hash: str) -> Usuario | None:
+    usuario = get_usuario_by_id_and_empresa(db, usuario_id, empresa_id)
+    if not usuario:
+        return None
+    usuario.password_hash = password_hash
+    db.commit()
+    db.refresh(usuario)
+    return usuario

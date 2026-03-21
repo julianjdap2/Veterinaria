@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useClientes } from '../clientes/hooks/useClientes'
 import { useEspecies } from '../catalogo/hooks/useEspecies'
 import { useAllRazas } from '../catalogo/hooks/useRazas'
 import { useMascotas } from './hooks/useMascotas'
@@ -21,23 +20,19 @@ export function MascotasListPage() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
   const [pageSize] = useState(DEFAULT_PAGE_SIZE)
-  const [nombre, setNombre] = useState('')
-  const [clienteId, setClienteId] = useState<string>('')
+  const [busqueda, setBusqueda] = useState('')
   const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const filters = {
     page,
     page_size: pageSize,
-    nombre: nombre || undefined,
-    cliente_id: clienteId ? parseInt(clienteId, 10) : undefined,
+    busqueda: busqueda.trim() || undefined,
     incluir_inactivos: incluirInactivos,
   }
   const { data, isLoading, isError, error: queryError } = useMascotas(filters)
-  const { data: clientesData } = useClientes({ page: 1, page_size: 500 })
   const { data: especies = [] } = useEspecies()
   const { data: razas = [] } = useAllRazas()
-  const clientesMap = new Map((clientesData?.items ?? []).map((c) => [c.id, c.nombre]))
   const especiesMap = new Map(especies.map((s) => [s.id, s.nombre]))
   const razasMap = new Map(razas.map((r) => [r.id, r.nombre ?? `Raza ${r.id}`]))
 
@@ -84,34 +79,14 @@ export function MascotasListPage() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-4">
             <Input
-              placeholder="Buscar por nombre"
-              value={nombre}
+              placeholder="Buscar por mascota, nombre del dueño o documento"
+              value={busqueda}
               onChange={(e) => {
-                setNombre(e.target.value)
+                setBusqueda(e.target.value)
                 setPage(1)
               }}
-              className="max-w-xs"
+              className="max-w-md"
             />
-            <div className="w-full max-w-[220px]">
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Cliente
-              </label>
-              <select
-                value={clienteId}
-                onChange={(e) => {
-                  setClienteId(e.target.value)
-                  setPage(1)
-                }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="">Todos</option>
-                {(clientesData?.items ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
             <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input
                 type="checkbox"
@@ -160,7 +135,7 @@ export function MascotasListPage() {
                           to={`/clientes/${m.cliente_id}`}
                           className="text-primary-600 hover:underline text-sm"
                         >
-                          {clientesMap.get(m.cliente_id) ?? `Cliente #${m.cliente_id}`}
+                          {m.cliente_nombre ?? `Cliente #${m.cliente_id}`}
                         </Link>
                       </TableTd>
                       <TableTd className="text-sm text-gray-600">

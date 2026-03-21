@@ -1,12 +1,10 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../core/auth-store'
 import { ROLES } from '../../core/constants'
 import { useCitaDetail } from './hooks/useCitasAgenda'
-import { useMascotas } from '../mascotas/hooks/useMascotas'
 import { useVeterinarios } from '../usuarios/hooks/useUsuarios'
-import { useMotivosConsulta } from '../catalogo/hooks/useMotivosConsulta'
 import { updateCita } from './api'
 import { citasKeys } from './hooks/useCitasAgenda'
 import { Card } from '../../shared/ui/Card'
@@ -15,14 +13,12 @@ import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
-
-const ESTADOS = [
-  { value: 'pendiente', label: 'Pendiente' },
-  { value: 'confirmada', label: 'Confirmada' },
-  { value: 'revision', label: 'Revisión' },
-  { value: 'atendida', label: 'Atendida' },
-  { value: 'cancelada', label: 'Cancelada' },
-] as const
+import { useConfigOperativa } from '../empresa/hooks/useConfigOperativa'
+import {
+  labelTipoServicio,
+  duracionTipoServicio,
+  citaEsHistorica,
+} from './tipoServicio'
 
 function formatDateTime(s: string | null): string {
   if (!s) return '—'
@@ -48,31 +44,37 @@ function toDatetimeLocal(s: string | null): string {
   }
 }
 
+function normalizeTipoServicio(
+  motivo: string | null | undefined,
+  tipos: { id: string }[] | undefined,
+): string {
+  const v = (motivo ?? '').trim()
+  if (tipos?.some((t) => t.id === v)) return v
+  return tipos?.[0]?.id ?? 'consulta'
+}
+
 export function CitaDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
   const numId = id ? parseInt(id, 10) : null
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
   const { data: cita, isLoading, isError } = useCitaDetail(numId)
-  const { data: mascotasData } = useMascotas({ page: 1, page_size: 500 })
+  const { data: configOp } = useConfigOperativa()
+  const tipos = configOp?.tipos_servicio
   const puedeAsignarVet = user?.rolId === ROLES.ADMIN || user?.rolId === ROLES.RECEPCION
   const { data: veterinarios = [] } = useVeterinarios({ enabled: puedeAsignarVet })
-  const { data: motivosList = [] } = useMotivosConsulta()
-  const mascotasMap = new Map((mascotasData?.items ?? []).map((m) => [m.id, m.nombre]))
 
   const [fecha, setFecha] = useState('')
-  const [motivoPredefinido, setMotivoPredefinido] = useState('')
-  const [motivoOtro, setMotivoOtro] = useState('')
-  const [estado, setEstado] = useState('pendiente')
+  const [motivoPredefinido, setMotivoPredefinido] = useState<string>('consulta')
+  const [notas, setNotas] = useState('')
+  const [urgente, setUrgente] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [assigning, setAssigning] = useState(false)
   const [changingState, setChangingState] = useState(false)
   const [assigningVet, setAssigningVet] = useState(false)
   const [edited, setEdited] = useState(false)
 
-  const isVet = user?.rolId === ROLES.VETERINARIO
-  const canAssignMe = isVet && user?.userId != null && cita?.veterinario_id !== user.userId
   const isAdminOrRecep = puedeAsignarVet
 
   if (numId == null || isError || (!isLoading && !cita)) {
@@ -95,12 +97,12 @@ export function CitaDetailPage() {
     setError(null)
     setSaving(true)
     try {
-      const motivoFinal =
-        motivoPredefinido === 'otro' ? motivoOtro.trim() : (motivoPredefinido || null)
+      const motivoFinal = motivoPredefinido || null
       await updateCita(numId, {
         fecha: fecha ? `${fecha}:00` : null,
         motivo: motivoFinal || null,
-        estado: estado as 'pendiente' | 'confirmada' | 'atendida' | 'cancelada',
+        notas: notas.trim() || null,
+        urgente,
       })
       queryClient.invalidateQueries({ queryKey: citasKeys().detail(numId) })
       queryClient.invalidateQueries({ queryKey: citasKeys().agenda({ page: 1, page_size: 20 }) })
@@ -112,24 +114,6 @@ export function CitaDetailPage() {
       toast.error(msg)
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function handleAsignarme() {
-    if (numId == null || user?.userId == null) return
-    setError(null)
-    setAssigning(true)
-    try {
-      await updateCita(numId, { veterinario_id: user.userId })
-      queryClient.invalidateQueries({ queryKey: citasKeys().detail(numId) })
-      queryClient.invalidateQueries({ queryKey: citasKeys().agenda({ page: 1, page_size: 20 }) })
-      toast.success('Cita asignada a ti correctamente')
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Error al asignar.'
-      setError(msg)
-      toast.error(msg)
-    } finally {
-      setAssigning(false)
     }
   }
 
@@ -174,15 +158,35 @@ export function CitaDetailPage() {
   const estadoActual = cita?.estado ?? 'pendiente'
   const showStateButtons = !showForm && !changingState
   const displayFecha = edited ? fecha : toDatetimeLocal(cita.fecha)
-  const displayEstado = edited ? estado : (cita.estado ?? 'pendiente')
+  const labelEstado = (estado: string | null | undefined) => {
+    const e = (estado ?? '').trim()
+    if (!e) return 'Pendiente'
+    if (e === 'pendiente') return 'Pendiente'
+    if (e === 'confirmada') return 'Confirmada'
+    if (e === 'revision') return 'En curso'
+    if (e === 'atendida') return 'Finalizada'
+    if (e === 'cancelada') return 'Cancelada'
+    return e
+  }
+  const puedeEditarCita = user?.rolId === ROLES.ADMIN || user?.rolId === ROLES.RECEPCION
+  const historica = cita ? citaEsHistorica(cita) : false
+  const st = location.state as { from?: string; mascotaId?: number } | null
+  const backHref =
+    st?.from === '/mascotas' && st?.mascotaId != null ? `/mascotas/${st.mascotaId}` : '/citas'
+  const backLabel = st?.from === '/mascotas' ? '← Volver a ficha mascota' : '← Volver a agenda'
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link to="/citas" className="text-primary-600 hover:underline text-sm">
-          ← Volver a agenda
+        <Link to={backHref} className="text-primary-600 hover:underline text-sm">
+          {backLabel}
         </Link>
       </div>
+      {historica && (
+        <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+          Cita en solo lectura (fecha pasada o estado final). No se pueden modificar datos.
+        </p>
+      )}
       {error && (
         <Alert variant="error" onDismiss={() => setError(null)}>
           {error}
@@ -192,7 +196,7 @@ export function CitaDetailPage() {
         title={`Cita #${cita.id}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {showStateButtons && estadoActual === 'pendiente' && puedeAsignarVet && (
+            {showStateButtons && estadoActual === 'pendiente' && puedeAsignarVet && !historica && (
               <>
                 <Button onClick={() => handleCambiarEstado('confirmada')} loading={changingState}>
                   Confirmar cita
@@ -202,7 +206,7 @@ export function CitaDetailPage() {
                 </Button>
               </>
             )}
-            {showStateButtons && estadoActual === 'confirmada' && puedeAsignarVet && (
+            {showStateButtons && estadoActual === 'confirmada' && puedeAsignarVet && !historica && (
               <>
                 <p className="text-sm text-amber-700 font-medium px-2">
                   En espera de consulta del veterinario
@@ -212,16 +216,7 @@ export function CitaDetailPage() {
                 </Button>
               </>
             )}
-            {canAssignMe && (
-              <Button
-                variant="secondary"
-                onClick={handleAsignarme}
-                loading={assigning}
-              >
-                Asignarme
-              </Button>
-            )}
-            {showForm ? (
+            {puedeEditarCita && showForm ? (
               <>
                 <Button onClick={handleSave} loading={saving}>
                   Guardar cambios
@@ -230,10 +225,9 @@ export function CitaDetailPage() {
                   variant="secondary"
                   onClick={() => {
                     setFecha(toDatetimeLocal(cita.fecha))
-                    const inList = motivosList.some((m) => m.nombre === (cita.motivo ?? ''))
-                    setMotivoPredefinido(inList ? (cita.motivo ?? '') : 'otro')
-                    setMotivoOtro(inList ? '' : (cita.motivo ?? ''))
-                    setEstado(cita.estado ?? 'pendiente')
+                    setMotivoPredefinido(normalizeTipoServicio(cita.motivo, tipos))
+                  setNotas(cita.notas ?? '')
+                  setUrgente(!!cita.urgente)
                     setEdited(false)
                   }}
                   disabled={saving}
@@ -241,21 +235,20 @@ export function CitaDetailPage() {
                   Cancelar
                 </Button>
               </>
-            ) : (
+            ) : puedeEditarCita && !historica ? (
               <Button
                 variant="secondary"
                 onClick={() => {
                   setFecha(toDatetimeLocal(cita.fecha))
-                  const inList = motivosList.some((m) => m.nombre === (cita.motivo ?? ''))
-                  setMotivoPredefinido(inList ? (cita.motivo ?? '') : 'otro')
-                  setMotivoOtro(inList ? '' : (cita.motivo ?? ''))
-                  setEstado(cita.estado ?? 'pendiente')
+                  setMotivoPredefinido(normalizeTipoServicio(cita.motivo, tipos))
+                  setNotas(cita.notas ?? '')
+                  setUrgente(!!cita.urgente)
                   setEdited(true)
                 }}
               >
                 Editar
               </Button>
-            )}
+            ) : null}
           </div>
         }
       >
@@ -265,9 +258,10 @@ export function CitaDetailPage() {
             <dd className="mt-0.5">
               <Link
                 to={`/mascotas/${cita.mascota_id}`}
+                state={{ from: '/citas' }}
                 className="text-primary-600 hover:underline"
               >
-                {mascotasMap.get(cita.mascota_id) ?? `#${cita.mascota_id}`}
+                {cita.mascota_nombre ?? `Mascota #${cita.mascota_id}`}
               </Link>
             </dd>
           </div>
@@ -282,46 +276,48 @@ export function CitaDetailPage() {
               disabled={saving}
             />
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Motivo</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Tipo de servicio</label>
               <select
                 value={motivoPredefinido}
                 onChange={(e) => setMotivoPredefinido(e.target.value)}
                 disabled={saving}
                 className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
-                <option value="">Seleccionar motivo</option>
-                {motivosList.map((m) => (
-                  <option key={m.id} value={m.nombre}>
-                    {m.nombre}
+                {(tipos ?? [{ id: 'consulta', label: 'Consulta' }]).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
                   </option>
                 ))}
-                <option value="otro">Otro (especificar)</option>
               </select>
-              {motivoPredefinido === 'otro' && (
-                <Input
-                  className="mt-2"
-                  value={motivoOtro}
-                  onChange={(e) => setMotivoOtro(e.target.value)}
-                  placeholder="Indique el motivo..."
-                  maxLength={200}
-                  disabled={saving}
-                />
-              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Tiempo estimado: {duracionTipoServicio(motivoPredefinido, tipos)}
+              </p>
             </div>
+
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Estado</label>
-              <select
-                value={displayEstado}
-                onChange={(e) => setEstado(e.target.value)}
+              <label className="mb-1 block text-sm font-medium text-gray-700">Notas</label>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                rows={3}
+                placeholder="Notas para la cita (síntomas, observaciones de recepción, etc.)"
                 disabled={saving}
-                className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                {ESTADOS.map((e) => (
-                  <option key={e.value} value={e.value}>
-                    {e.label}
-                  </option>
-                ))}
-              </select>
+                className="w-full max-w-md rounded-xl border border-gray-300 px-3 py-2 text-gray-900 placeholder-slate-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="cita-urgente"
+                type="checkbox"
+                checked={urgente}
+                onChange={(e) => setUrgente(e.target.checked)}
+                disabled={saving}
+                className="rounded border-primary-200 text-primary-600 focus:ring-primary-500/60"
+              />
+              <label htmlFor="cita-urgente" className="text-sm font-medium text-slate-700">
+                Marcar como urgente
+              </label>
             </div>
           </div>
         ) : (
@@ -336,7 +332,7 @@ export function CitaDetailPage() {
                       const v = e.target.value
                       handleAsignarVeterinario(v === '' ? null : parseInt(v, 10))
                     }}
-                    disabled={assigningVet}
+                    disabled={assigningVet || historica}
                     className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
                   >
                     <option value="">Sin asignar</option>
@@ -360,8 +356,30 @@ export function CitaDetailPage() {
               <dd className="mt-0.5 text-gray-900">{formatDateTime(cita.fecha)}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Motivo</dt>
-              <dd className="mt-0.5 text-gray-900">{cita.motivo ?? '—'}</dd>
+              <dt className="text-sm font-medium text-gray-500">Servicio</dt>
+              <dd className="mt-0.5 text-gray-900">{labelTipoServicio(cita.motivo, tipos)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Tiempo estimado</dt>
+              <dd className="mt-0.5 text-gray-900">{duracionTipoServicio(cita.motivo, tipos)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Notas</dt>
+              <dd className="mt-0.5 text-gray-900">{cita.notas ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Urgente</dt>
+              <dd className="mt-0.5">
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-medium ring-1 ${
+                    cita.urgente
+                      ? 'border-red-300 bg-red-50 text-red-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  {cita.urgente ? 'Sí' : 'No'}
+                </span>
+              </dd>
             </div>
             <div>
               <dt className="text-sm font-medium text-gray-500">Estado</dt>
@@ -379,7 +397,7 @@ export function CitaDetailPage() {
                               : 'bg-slate-200 text-slate-900 ring-1 ring-slate-300'
                   }`}
                 >
-                  {cita.estado ?? 'pendiente'}
+                  {labelEstado(cita.estado)}
                 </span>
               </dd>
             </div>

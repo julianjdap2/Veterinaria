@@ -18,16 +18,14 @@ export function ClientesListPage() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
   const [pageSize] = useState(DEFAULT_PAGE_SIZE)
-  const [nombre, setNombre] = useState('')
-  const [documento, setDocumento] = useState('')
+  const [busqueda, setBusqueda] = useState('')
   const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const filters = {
     page,
     page_size: pageSize,
-    nombre: nombre || undefined,
-    documento: documento || undefined,
+    busqueda: busqueda.trim() || undefined,
     incluir_inactivos: incluirInactivos,
   }
   const { data, isLoading, isError, error: queryError } = useClientes(filters)
@@ -75,22 +73,13 @@ export function ClientesListPage() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-4">
             <Input
-              placeholder="Buscar por nombre"
-              value={nombre}
+              placeholder="Buscar por nombre o documento"
+              value={busqueda}
               onChange={(e) => {
-                setNombre(e.target.value)
+                setBusqueda(e.target.value)
                 setPage(1)
               }}
-              className="max-w-xs"
-            />
-            <Input
-              placeholder="Buscar por documento"
-              value={documento}
-              onChange={(e) => {
-                setDocumento(e.target.value)
-                setPage(1)
-              }}
-              className="max-w-xs"
+              className="max-w-md"
             />
             <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input

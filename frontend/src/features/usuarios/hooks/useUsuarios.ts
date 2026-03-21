@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchUsuarios, createUsuario, fetchVeterinarios } from '../api'
+import { fetchUsuarios, createUsuario, fetchVeterinarios, fetchMisPermisosAdmin } from '../api'
 import type { UsuariosFilters } from '../api'
 import type { UsuarioCreate } from '../../../api/types'
 
@@ -13,6 +13,17 @@ export function useUsuarios(filters: UsuariosFilters) {
   return useQuery({
     queryKey: usuariosKeys(filters),
     queryFn: () => fetchUsuarios(filters),
+  })
+}
+
+const STALE_PERMISOS_MS = 5 * 60 * 1000
+
+export function useMisPermisosAdmin(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['usuarios', 'mi-permisos-admin'] as const,
+    queryFn: () => fetchMisPermisosAdmin(),
+    enabled: options?.enabled ?? true,
+    staleTime: STALE_PERMISOS_MS,
   })
 }
 
@@ -32,5 +43,6 @@ export function useVeterinarios(options?: { enabled?: boolean }) {
     queryKey: ['usuarios', 'veterinarios'],
     queryFn: () => fetchVeterinarios(),
     enabled: options?.enabled ?? true,
+    staleTime: STALE_PERMISOS_MS,
   })
 }

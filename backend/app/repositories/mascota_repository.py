@@ -5,7 +5,10 @@ Repositorio encargado de acceder a la base de datos.
 Aquí se ejecutan las consultas ORM.
 """
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+from app.models.cliente import Cliente
 from app.models.mascota import Mascota
 
 
@@ -23,15 +26,30 @@ def count_mascotas_por_empresa(
     solo_activas: bool = True,
     cliente_id: int | None = None,
     nombre: str | None = None,
+    busqueda: str | None = None,
 ) -> int:
     """Cuenta mascotas de la empresa (con filtros opcionales)."""
     q = db.query(Mascota).filter(Mascota.empresa_id == empresa_id)
     if solo_activas:
         q = q.filter(Mascota.activo.is_(True))
-    if cliente_id is not None:
-        q = q.filter(Mascota.cliente_id == cliente_id)
-    if nombre is not None and nombre.strip():
-        q = q.filter(Mascota.nombre.ilike(f"%{nombre.strip()}%"))
+    if busqueda is not None and busqueda.strip():
+        term = f"%{busqueda.strip()}%"
+        q = (
+            q.join(Cliente, Mascota.cliente_id == Cliente.id)
+            .filter(Cliente.empresa_id == empresa_id)
+            .filter(
+                or_(
+                    Mascota.nombre.ilike(term),
+                    Cliente.nombre.ilike(term),
+                    Cliente.documento.ilike(term),
+                )
+            )
+        )
+    else:
+        if cliente_id is not None:
+            q = q.filter(Mascota.cliente_id == cliente_id)
+        if nombre is not None and nombre.strip():
+            q = q.filter(Mascota.nombre.ilike(f"%{nombre.strip()}%"))
     return q.count()
 
 
@@ -43,15 +61,30 @@ def listar_mascotas_por_empresa(
     solo_activas: bool = True,
     cliente_id: int | None = None,
     nombre: str | None = None,
+    busqueda: str | None = None,
 ) -> list[Mascota]:
     offset = (page - 1) * page_size
     q = db.query(Mascota).filter(Mascota.empresa_id == empresa_id)
     if solo_activas:
         q = q.filter(Mascota.activo.is_(True))
-    if cliente_id is not None:
-        q = q.filter(Mascota.cliente_id == cliente_id)
-    if nombre is not None and nombre.strip():
-        q = q.filter(Mascota.nombre.ilike(f"%{nombre.strip()}%"))
+    if busqueda is not None and busqueda.strip():
+        term = f"%{busqueda.strip()}%"
+        q = (
+            q.join(Cliente, Mascota.cliente_id == Cliente.id)
+            .filter(Cliente.empresa_id == empresa_id)
+            .filter(
+                or_(
+                    Mascota.nombre.ilike(term),
+                    Cliente.nombre.ilike(term),
+                    Cliente.documento.ilike(term),
+                )
+            )
+        )
+    else:
+        if cliente_id is not None:
+            q = q.filter(Mascota.cliente_id == cliente_id)
+        if nombre is not None and nombre.strip():
+            q = q.filter(Mascota.nombre.ilike(f"%{nombre.strip()}%"))
     return q.order_by(Mascota.id.desc()).offset(offset).limit(page_size).all()
 
 

@@ -8,6 +8,7 @@ from jose import jwt
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
+from app.models.empresa import Empresa
 from app.models.usuario import Usuario
 from app.config import settings
 from app.utils.audit_context import set_audit_context
@@ -49,6 +50,17 @@ def get_current_user(
             status_code=401,
             detail="Usuario no encontrado"
         )
+
+    # Bloqueo global por estado de empresa (excepto superadmin plataforma).
+    if user.rol_id != 4:
+        empresa = db.query(Empresa).filter(Empresa.id == user.empresa_id).first()
+        if not empresa:
+            raise HTTPException(status_code=401, detail="Empresa no encontrada")
+        if bool(getattr(empresa, "deleted_at", None)):
+            raise HTTPException(status_code=403, detail="Empresa eliminada/inactiva")
+        estado = (getattr(empresa, "estado", "activa") or "activa").lower()
+        if not empresa.activa or estado == "suspendida":
+            raise HTTPException(status_code=403, detail="Empresa suspendida. Contacta al superadmin.")
 
     # Establecer contexto de auditoría para este request
     client_ip = None

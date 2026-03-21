@@ -8,7 +8,7 @@ que llegan a la API.
 
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MascotaBase(BaseModel):
@@ -54,5 +54,7 @@ class MascotaResponse(MascotaBase):
     id: int
     empresa_id: int
     activo: bool
+    # Relleno en listados (evita N consultas de clientes en el front).
+    cliente_nombre: Optional[str] = Field(default=None, description="Nombre del tutor; solo en GET listado/detalle enriquecido.")
 
     model_config = ConfigDict(from_attributes=True)

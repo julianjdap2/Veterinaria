@@ -1,9 +1,11 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEspecies } from '../catalogo/hooks/useEspecies'
 import { useAllRazas } from '../catalogo/hooks/useRazas'
 import { useConsultasByMascota } from '../consultas/hooks/useConsultasByMascota'
+import { useCitasByMascota } from '../citas/hooks/useCitasAgenda'
 import { useMascotaDetail } from './hooks/useMascotaDetail'
+import { useClienteDetail } from '../clientes/hooks/useClienteDetail'
 import { updateMascotaActivo } from './api'
 import { mascotasKeys } from './hooks/useMascotas'
 import { Card } from '../../shared/ui/Card'
@@ -37,10 +39,14 @@ function formatDateTime(s: string | null): string {
 
 export function MascotaDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  const fromCitas = (location.state as { from?: string } | null)?.from === '/citas'
   const numId = id ? parseInt(id, 10) : null
   const queryClient = useQueryClient()
   const { data: mascota, isLoading, isError } = useMascotaDetail(numId)
+  const { data: cliente } = useClienteDetail(mascota?.cliente_id ?? null)
   const { data: consultas = [], isLoading: loadingConsultas } = useConsultasByMascota(numId)
+  const { data: citas = [], isLoading: loadingCitas } = useCitasByMascota(numId)
   const { data: especies = [] } = useEspecies()
   const { data: razas = [] } = useAllRazas()
   const especiesMap = new Map(especies.map((s) => [s.id, s.nombre]))
@@ -83,10 +89,16 @@ export function MascotaDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link to="/mascotas" className="text-primary-600 hover:underline text-sm">
-          ← Volver a mascotas
-        </Link>
+      <div className="flex flex-wrap items-center gap-4">
+        {fromCitas ? (
+          <Link to="/citas" className="text-primary-600 hover:underline text-sm">
+            ← Volver a citas
+          </Link>
+        ) : (
+          <Link to="/mascotas" className="text-primary-600 hover:underline text-sm">
+            ← Volver a mascotas
+          </Link>
+        )}
       </div>
       {!mascota.activo && (
         <Alert variant="warning">
@@ -124,7 +136,10 @@ export function MascotaDetailPage() {
                 to={`/clientes/${mascota.cliente_id}`}
                 className="text-primary-600 hover:underline"
               >
-                Ver cliente #{mascota.cliente_id}
+                {cliente?.nombre ? `${cliente.nombre}` : `Ver cliente #${mascota.cliente_id}`}
+                {cliente?.documento ? (
+                  <span className="text-slate-500"> ({cliente.documento})</span>
+                ) : null}
               </Link>
             </dd>
           </div>
@@ -204,6 +219,37 @@ export function MascotaDetailPage() {
                     Ver detalle / PDF / Email
                   </Link>
                 </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card
+        title="Historial de citas"
+        actions={
+          <Link to="/citas" state={{ mascotaId: numId }}>
+            <Button variant="secondary">Ver agenda</Button>
+          </Link>
+        }
+      >
+        {loadingCitas && <p className="text-sm text-gray-500">Cargando citas...</p>}
+        {!loadingCitas && citas.length === 0 && <p className="text-sm text-gray-500">Sin citas registradas.</p>}
+        {!loadingCitas && citas.length > 0 && (
+          <ul className="space-y-3">
+            {citas.map((c) => (
+              <li key={c.id} className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{formatDateTime(c.fecha ?? null)}</p>
+                  <p className="text-sm text-gray-600">{c.motivo ?? '—'}</p>
+                </div>
+                <Link
+                  to={`/citas/${c.id}`}
+                  state={{ from: '/mascotas', mascotaId: numId }}
+                  className="shrink-0 text-sm text-primary-600 hover:underline"
+                >
+                  Ver
+                </Link>
               </li>
             ))}
           </ul>

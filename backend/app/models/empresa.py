@@ -36,6 +36,8 @@ class Empresa(Base):
     plan_id = Column(Integer, ForeignKey("planes.id"))
 
     activa = Column(Boolean, default=True)
+    estado = Column(String(30), nullable=False, default="activa")  # activa, suspendida, en_prueba
+    deleted_at = Column(TIMESTAMP, nullable=True)
 
     created_at = Column(
         TIMESTAMP,

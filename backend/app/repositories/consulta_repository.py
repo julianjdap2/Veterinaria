@@ -42,7 +42,10 @@ def obtener_consulta_por_id(
 ) -> Consulta | None:
     return (
         db.query(Consulta)
-        .options(joinedload(Consulta.mascota))
+        .options(
+            joinedload(Consulta.mascota),
+            joinedload(Consulta.cita),
+        )
         .join(Mascota, Consulta.mascota_id == Mascota.id)
         .filter(Consulta.id == consulta_id, Mascota.empresa_id == empresa_id)
         .first()

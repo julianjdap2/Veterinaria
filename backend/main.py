@@ -45,6 +45,10 @@ from app.routers import productos_router
 from app.routers import ventas_router
 from app.routers import audit_router
 from app.routers import cron_router
+from app.routers import dashboard_router
+from app.routers import superadmin_router
+from app.routers import empresa_operacion_router
+from app.routers import empresa_notificaciones_router
 from app.utils.audit_events import register_model_events
 from app.core.exception_handlers import (
     api_error_handler,
@@ -132,6 +136,10 @@ app.include_router(productos_router.router)
 app.include_router(ventas_router.router)
 app.include_router(audit_router.router)
 app.include_router(cron_router.router)
+app.include_router(dashboard_router.router)
+app.include_router(superadmin_router.router)
+app.include_router(empresa_operacion_router.router)
+app.include_router(empresa_notificaciones_router.router)
 
 
 @app.get(

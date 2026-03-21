@@ -50,6 +50,7 @@ def get_resumen_consulta(
     mascota = getattr(consulta, "mascota", None)
     cliente = mascota.cliente if mascota else None
     veterinario = getattr(consulta, "veterinario", None)
+    cita = getattr(consulta, "cita", None)
 
     fecha_consulta = consulta.fecha_consulta or consulta.created_at
     fecha_str = ""
@@ -94,6 +95,7 @@ def get_resumen_consulta(
         "motivo_consulta": _safe(consulta.motivo_consulta),
         "diagnostico": _safe(consulta.diagnostico),
         "tratamiento": _safe(consulta.tratamiento),
+        "notas_cita": _safe(getattr(cita, "notas", None)),
         "observaciones": _safe(consulta.observaciones),
         "formula": formula,
         "mostrar_precio": mostrar_precio,
@@ -118,6 +120,9 @@ def resumen_consulta_como_texto(resumen: dict[str, Any]) -> str:
         "",
         "Tratamiento:",
         resumen.get("tratamiento", "—"),
+        "",
+        "Notas de la cita:",
+        resumen.get("notas_cita", "—"),
         "",
         "Observaciones:",
         resumen.get("observaciones", "—"),
@@ -195,6 +200,7 @@ def generar_pdf_resumen(resumen: dict[str, Any]) -> bytes:
         ("Motivo de consulta", "motivo_consulta"),
         ("Diagnóstico", "diagnostico"),
         ("Tratamiento", "tratamiento"),
+        ("Notas de la cita", "notas_cita"),
         ("Observaciones", "observaciones"),
     ]:
         story.append(Paragraph(label, heading_style))

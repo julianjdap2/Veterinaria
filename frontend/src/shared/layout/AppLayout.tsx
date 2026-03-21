@@ -1,32 +1,26 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../core/auth-store'
-import { ROLES, ROL_LABELS } from '../../core/constants'
+import { ROLES, ROL_LABELS, type RolId } from '../../core/constants'
 import { Button } from '../ui/Button'
 import { BannerMascot } from '../ui/BannerMascot'
 
-const navByRole: Record<number, { to: string; label: string }[]> = {
-  [ROLES.ADMIN]: [
-    { to: '/clientes', label: 'Clientes' },
-    { to: '/mascotas', label: 'Mascotas' },
-    { to: '/citas', label: 'Citas' },
-    { to: '/productos', label: 'Inventario' },
-    { to: '/ventas', label: 'Ventas' },
-    { to: '/usuarios', label: 'Usuarios' },
-    { to: '/audit', label: 'Auditoría' },
-  ],
-  [ROLES.VETERINARIO]: [
-    { to: '/clientes', label: 'Clientes' },
-    { to: '/mascotas', label: 'Mascotas' },
-    { to: '/citas', label: 'Citas' },
-  ],
-  [ROLES.RECEPCION]: [
-    { to: '/clientes', label: 'Clientes' },
-    { to: '/mascotas', label: 'Mascotas' },
-    { to: '/citas', label: 'Citas' },
-    { to: '/productos', label: 'Inventario' },
-    { to: '/ventas', label: 'Ventas' },
-  ],
-}
+type NavEntry = { to: string; label: string; roles: readonly RolId[] }
+
+/** Una sola definición de menú; se filtra por rol (evita duplicar listas por rol). */
+const NAV_ITEMS: NavEntry[] = [
+  { to: '/dashboard', label: 'Dashboard', roles: [ROLES.ADMIN, ROLES.VETERINARIO, ROLES.RECEPCION, ROLES.SUPERADMIN] },
+  { to: '/clientes', label: 'Clientes', roles: [ROLES.ADMIN, ROLES.VETERINARIO, ROLES.RECEPCION] },
+  { to: '/mascotas', label: 'Mascotas', roles: [ROLES.ADMIN, ROLES.VETERINARIO, ROLES.RECEPCION] },
+  { to: '/citas', label: 'Citas', roles: [ROLES.ADMIN, ROLES.VETERINARIO, ROLES.RECEPCION] },
+  { to: '/productos', label: 'Inventario', roles: [ROLES.ADMIN, ROLES.RECEPCION] },
+  { to: '/ventas', label: 'Ventas', roles: [ROLES.ADMIN, ROLES.RECEPCION] },
+  { to: '/usuarios', label: 'Usuarios', roles: [ROLES.ADMIN] },
+  { to: '/audit', label: 'Auditoría', roles: [ROLES.ADMIN] },
+  { to: '/configuracion-operativa', label: 'Config. operativa', roles: [ROLES.ADMIN] },
+  { to: '/configuracion-notificaciones', label: 'Notificaciones', roles: [ROLES.ADMIN] },
+  { to: '/superadmin/empresas', label: 'Empresas', roles: [ROLES.SUPERADMIN] },
+  { to: '/superadmin/planes', label: 'Planes', roles: [ROLES.SUPERADMIN] },
+]
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -34,8 +28,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
-  const rolId = user?.rolId ?? 0
-  const navItems = navByRole[rolId] ?? []
+  const rolId = (user?.rolId ?? 0) as RolId
+  const navItems = NAV_ITEMS.filter((item) => item.roles.includes(rolId))
   const welcomeName = user?.email?.split('@')[0] ?? 'Usuario'
 
   function handleLogout() {
@@ -50,9 +44,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="p-5 border-b border-slate-100">
           <Link
             to="/"
-            className="flex items-center gap-2 text-xl font-bold text-primary-700 tracking-tight hover:text-primary-600 transition-colors"
+            className="group flex items-center gap-2 text-xl font-bold text-primary-700 tracking-tight transition-all duration-300 hover:text-primary-600 hover:drop-shadow-sm"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-600 text-sm font-bold">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-600 text-sm font-bold transition-all duration-300 group-hover:bg-accent-100 group-hover:text-accent-700 group-hover:scale-105">
               V
             </span>
             Vet System
@@ -66,10 +60,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 key={to}
                 to={to}
                 className={`
-                  flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200
+                  flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium
+                  transition-all duration-200 ease-out
+                  motion-safe:hover:translate-x-0.5
                   ${isActive
                     ? 'bg-primary-50 text-primary-700 shadow-inner-soft border-l-2 border-l-primary-500 -ml-0.5 pl-3.5'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    : `text-slate-600 border-l-2 border-l-transparent
+                       hover:bg-gradient-to-r hover:from-primary-50/90 hover:to-accent-50/40
+                       hover:text-primary-800 hover:border-l-primary-400 hover:shadow-sm
+                       active:scale-[0.99]`
                   }
                 `}
               >
@@ -82,7 +81,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="text-xs font-medium text-slate-500 truncate" title={user?.email}>
             {user?.email ?? 'Usuario'}
           </p>
-          <p className="text-xs text-slate-400 mt-0.5">{ROL_LABELS[rolId as keyof typeof ROL_LABELS] ?? '—'}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{ROL_LABELS[rolId] ?? '—'}</p>
           <Button
             variant="ghost"
             className="mt-3 w-full justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
@@ -95,7 +94,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main: banner + content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Banner de bienvenida con mascota animada */}
         <header className="relative shrink-0 overflow-hidden bg-gradient-to-r from-primary-600 via-primary-500 to-primary-400 text-white px-6 py-3 shadow-card">
           <p className="relative z-10 text-sm font-medium opacity-95">
             Bienvenido, <span className="font-semibold">{welcomeName}</span>

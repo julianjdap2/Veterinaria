@@ -44,6 +44,7 @@ class ResumenConsultaResponse(BaseModel):
     motivo_consulta: str
     diagnostico: str
     tratamiento: str
+    notas_cita: str
     observaciones: str
 
 

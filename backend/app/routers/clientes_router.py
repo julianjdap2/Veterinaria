@@ -45,13 +45,14 @@ def crear_cliente(
     "/",
     response_model=PaginatedResponse[ClienteResponse],
     summary="Listar clientes",
-    description="Lista clientes de la empresa con paginación y total. Filtros: nombre, documento. incluir_inactivos=true para ver también inactivos.",
+    description="Lista clientes de la empresa con paginación y total. Filtros: nombre, documento, busqueda (nombre O documento). incluir_inactivos=true para ver también inactivos.",
 )
 def listar_clientes(
     page: int = 1,
     page_size: int = 20,
     nombre: str | None = None,
     documento: str | None = None,
+    busqueda: str | None = None,
     incluir_inactivos: bool = False,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -65,6 +66,7 @@ def listar_clientes(
         solo_activos=not incluir_inactivos,
         nombre=nombre,
         documento=documento,
+        busqueda=busqueda,
     )
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 

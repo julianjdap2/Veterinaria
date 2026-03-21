@@ -8,6 +8,7 @@ mediante el join con mascotas.
 from datetime import datetime
 from typing import List
 
+from sqlalchemy import extract, or_
 from sqlalchemy.orm import Session
 
 from app.models.cita import Cita
@@ -41,6 +42,33 @@ def listar_citas_por_mascota(
     )
 
 
+def count_citas_empresa_en_mes(
+    db: Session,
+    empresa_id: int,
+    year: int,
+    month: int,
+    exclude_cita_id: int | None = None,
+) -> int:
+    """
+    Cuenta citas de la empresa en un mes calendario (por `Cita.fecha`),
+    excluyendo canceladas. Solo filas con `mascota_id` enlazada a la empresa.
+    """
+    q = (
+        db.query(Cita)
+        .join(Mascota, Cita.mascota_id == Mascota.id)
+        .filter(
+            Mascota.empresa_id == empresa_id,
+            extract("year", Cita.fecha) == year,
+            extract("month", Cita.fecha) == month,
+            Cita.fecha.isnot(None),
+            or_(Cita.estado.is_(None), Cita.estado != "cancelada"),
+        )
+    )
+    if exclude_cita_id is not None:
+        q = q.filter(Cita.id != exclude_cita_id)
+    return q.count()
+
+
 def count_citas_por_empresa_y_rango(
     db: Session,
     empresa_id: int,
@@ -48,6 +76,7 @@ def count_citas_por_empresa_y_rango(
     fecha_hasta: datetime | None = None,
     estado: str | None = None,
     veterinario_id: int | None = None,
+    en_sala_espera: bool | None = None,
 ) -> int:
     """Cuenta citas de la empresa (con filtros opcionales)."""
     q = db.query(Cita).join(Mascota).filter(Mascota.empresa_id == empresa_id)
@@ -59,6 +88,8 @@ def count_citas_por_empresa_y_rango(
         q = q.filter(Cita.estado == estado.strip())
     if veterinario_id is not None:
         q = q.filter(Cita.veterinario_id == veterinario_id)
+    if en_sala_espera is not None:
+        q = q.filter(Cita.en_sala_espera.is_(en_sala_espera))
     return q.count()
 
 
@@ -71,6 +102,7 @@ def listar_citas_por_empresa_y_rango(
     page_size: int,
     estado: str | None = None,
     veterinario_id: int | None = None,
+    en_sala_espera: bool | None = None,
 ) -> List[Cita]:
     """Lista citas de la empresa en un rango de fechas (paginado)."""
     offset = (page - 1) * page_size
@@ -83,6 +115,8 @@ def listar_citas_por_empresa_y_rango(
         q = q.filter(Cita.estado == estado.strip())
     if veterinario_id is not None:
         q = q.filter(Cita.veterinario_id == veterinario_id)
+    if en_sala_espera is not None:
+        q = q.filter(Cita.en_sala_espera.is_(en_sala_espera))
     return q.order_by(Cita.fecha.desc()).offset(offset).limit(page_size).all()
 
 
