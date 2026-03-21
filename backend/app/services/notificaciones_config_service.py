@@ -17,6 +17,16 @@ def _defaults_dict() -> dict[str, Any]:
     return NotificacionesConfigResponse().model_dump()
 
 
+def _sanitize_reglas_en_dict(d: dict[str, Any]) -> None:
+    """Compatibilidad: reglas sin ningún canal activo se corrigen con email por defecto."""
+    reglas = d.get("reglas_recordatorio")
+    if not isinstance(reglas, list):
+        return
+    for r in reglas:
+        if isinstance(r, dict) and not (r.get("canal_email") or r.get("canal_sms") or r.get("canal_whatsapp")):
+            r["canal_email"] = True
+
+
 def _merge_notif_dict(raw: str | None) -> dict[str, Any]:
     base = _defaults_dict()
     if not raw or not str(raw).strip():
@@ -27,6 +37,7 @@ def _merge_notif_dict(raw: str | None) -> dict[str, Any]:
             for k, v in data.items():
                 if k in base and v is not None:
                     base[k] = v
+        _sanitize_reglas_en_dict(base)
         return base
     except json.JSONDecodeError:
         return base

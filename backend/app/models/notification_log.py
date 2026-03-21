@@ -10,6 +10,8 @@ class NotificationLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     empresa_id = Column(Integer, ForeignKey("empresas.id"), nullable=True)
     cita_id = Column(Integer, ForeignKey("citas.id"), nullable=True, index=True)
+    # Índice de la regla en notificaciones_json.reglas_recordatorio (0,1,…); NULL = envío legacy.
+    recordatorio_regla_idx = Column(Integer, nullable=True, index=True)
     canal = Column(String(20), nullable=False)  # email, sms, whatsapp
     tipo_evento = Column(String(50), nullable=False)  # cita_recordatorio, consulta_resumen, etc.
     destino = Column(String(255), nullable=True)

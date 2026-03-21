@@ -23,7 +23,7 @@ venv\Scripts\activate
 alembic upgrade head
 ```
 
-Ej.: `021` añade `ventas.codigo_interno` y consecutivo en `empresa_configuraciones`; `022` añade `notificaciones_json` y `notification_logs.cita_id`.
+Ej.: `021` añade `ventas.codigo_interno` y consecutivo en `empresa_configuraciones`; `022` añade `notificaciones_json` y `notification_logs.cita_id`; `023` añade `notification_logs.recordatorio_regla_idx` para deduplicar por regla configurable.
 
 ## Variables de entorno (.env)
 
@@ -50,7 +50,9 @@ curl -X POST http://localhost:8000/cron/recordatorios-citas
 curl -X POST http://localhost:8000/cron/recordatorios-citas -H "X-Cron-Secret: TU_VALOR"
 ```
 
-Programa esta llamada en el Programador de tareas (Windows) o cron a la hora deseada.
+Programa esta llamada en el Programador de tareas (Windows) o cron a la hora deseada (idealmente cada hora si usas reglas o modo ventana).
+
+**Reglas múltiples** (`reglas_recordatorio` en `GET/PATCH /empresa/config-notificaciones`): cada elemento define “cuánto antes” (horas/días/semanas) y qué canales usar; el cron deduplica por cita + canal + índice de regla (`notification_logs.recordatorio_regla_idx`, migración `023`).
 
 ## Endpoints principales
 
@@ -63,7 +65,7 @@ Programa esta llamada en el Programador de tareas (Windows) o cron a la hora des
 - **/consultas** – Historial clínico por mascota; creación (VETERINARIO).
 - **/citas** – Agenda: listar por mascota o por rango de fechas; crear/actualizar (VETERINARIO/RECEPCIÓN).
 - **/empresa/config-operativa** – Tipos de servicio (agenda) y parámetros de numeración de ventas (GET todos los roles; PATCH solo ADMIN con `admin_configuracion_empresa`).
-- **/empresa/config-notificaciones** – Recordatorios de citas: plantillas, modos, canales (GET tenant; PATCH ADMIN + permiso configuración).
+- **/empresa/config-notificaciones** – Recordatorios de citas: plantillas, modos, canales y **`reglas_recordatorio`** (varias filas: valor + unidad horas/días/semanas antes, email/SMS/WhatsApp por fila). Si la lista tiene al menos una regla, el cron usa solo reglas + `recordatorio_ventana_horas`; si está vacía, modo clásico (`recordatorio_modo` día calendario o ventana global) (GET tenant; PATCH ADMIN + permiso configuración).
 - **/ventas/{id}/detalle-ampliado** – Venta con cliente, mascota vía consulta y nombres de producto.
 
 Todos los endpoints (salvo `/`, `/health` y `/auth/login`) requieren cabecera `Authorization: Bearer <token>`.

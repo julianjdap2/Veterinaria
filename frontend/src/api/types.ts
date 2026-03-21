@@ -406,6 +406,16 @@ export interface ConfigOperativaUpdate {
 
 export type RecordatorioModo = 'dia_calendario' | 'ventana_horas'
 
+export type ReglaRecordatorioUnidad = 'horas' | 'dias' | 'semanas'
+
+export interface ReglaRecordatorio {
+  valor: number
+  unidad: ReglaRecordatorioUnidad
+  canal_email: boolean
+  canal_sms: boolean
+  canal_whatsapp: boolean
+}
+
 export interface NotificacionesConfig {
   recordatorio_modo: RecordatorioModo
   recordatorio_horas_antes: number
@@ -413,6 +423,8 @@ export interface NotificacionesConfig {
   canal_email: boolean
   canal_sms: boolean
   canal_whatsapp: boolean
+  /** Si hay al menos una regla, el cron usa solo estas ventanas (y canales por fila). */
+  reglas_recordatorio: ReglaRecordatorio[]
   plantilla_email_asunto: string
   plantilla_email_cuerpo: string
   plantilla_sms_cuerpo: string

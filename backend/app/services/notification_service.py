@@ -33,6 +33,7 @@ def _log_notification_attempt(
     proveedor: str,
     error: str | None = None,
     cita_id: int | None = None,
+    recordatorio_regla_idx: int | None = None,
 ) -> None:
     if db is None:
         return
@@ -41,6 +42,7 @@ def _log_notification_attempt(
             NotificationLog(
                 empresa_id=empresa_id,
                 cita_id=cita_id,
+                recordatorio_regla_idx=recordatorio_regla_idx,
                 canal=canal,
                 tipo_evento=tipo_evento,
                 destino=destino,
@@ -66,6 +68,7 @@ def notify_cita_recordatorio(
     body: str | None = None,
     reply_to: str | None = None,
     cita_id: int | None = None,
+    recordatorio_regla_idx: int | None = None,
 ) -> None:
     """Envía recordatorio de cita al cliente (cron). Plantillas opcionales."""
     if not email_cliente:
@@ -96,6 +99,7 @@ def notify_cita_recordatorio(
             estado="sent",
             proveedor=get_settings().NOTIFICATION_BACKEND,
             cita_id=cita_id,
+            recordatorio_regla_idx=recordatorio_regla_idx,
         )
     except Exception as e:
         _log_notification_attempt(
@@ -108,6 +112,7 @@ def notify_cita_recordatorio(
             proveedor=get_settings().NOTIFICATION_BACKEND,
             error=str(e),
             cita_id=cita_id,
+            recordatorio_regla_idx=recordatorio_regla_idx,
         )
 
 
@@ -214,6 +219,7 @@ def notify_cita_recordatorio_whatsapp(
     fecha_cita: datetime | None = None,
     body_text: str | None = None,
     cita_id: int | None = None,
+    recordatorio_regla_idx: int | None = None,
 ) -> None:
     """Envia recordatorio de cita por WhatsApp (Twilio si está configurado; si no, log)."""
     if not telefono:
@@ -233,6 +239,7 @@ def notify_cita_recordatorio_whatsapp(
                 estado="sent",
                 proveedor="twilio",
                 cita_id=cita_id,
+                recordatorio_regla_idx=recordatorio_regla_idx,
             )
             return
         except Exception as e:
@@ -247,6 +254,7 @@ def notify_cita_recordatorio_whatsapp(
                 proveedor="twilio",
                 error=str(e),
                 cita_id=cita_id,
+                recordatorio_regla_idx=recordatorio_regla_idx,
             )
 
     _log_phone_notification(
@@ -264,6 +272,7 @@ def notify_cita_recordatorio_whatsapp(
         estado="sent",
         proveedor="log",
         cita_id=cita_id,
+        recordatorio_regla_idx=recordatorio_regla_idx,
     )
 
 
@@ -276,6 +285,7 @@ def notify_cita_recordatorio_sms(
     fecha_cita: datetime | None = None,
     body_text: str | None = None,
     cita_id: int | None = None,
+    recordatorio_regla_idx: int | None = None,
 ) -> None:
     """Envia recordatorio de cita por SMS (Twilio si está configurado; si no, log)."""
     if not telefono:
@@ -295,6 +305,7 @@ def notify_cita_recordatorio_sms(
                 estado="sent",
                 proveedor="twilio",
                 cita_id=cita_id,
+                recordatorio_regla_idx=recordatorio_regla_idx,
             )
             return
         except Exception as e:
@@ -308,6 +319,7 @@ def notify_cita_recordatorio_sms(
                 proveedor="twilio",
                 error=str(e),
                 cita_id=cita_id,
+                recordatorio_regla_idx=recordatorio_regla_idx,
             )
 
     _log_phone_notification(
@@ -325,6 +337,7 @@ def notify_cita_recordatorio_sms(
         estado="sent",
         proveedor="log",
         cita_id=cita_id,
+        recordatorio_regla_idx=recordatorio_regla_idx,
     )
 
 
