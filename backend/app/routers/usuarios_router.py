@@ -2,17 +2,20 @@
 Router para gestión de usuarios. Solo ADMIN.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.errors import ApiError
+from app.security.dependencies import get_current_user
 from app.security.roles import require_roles
+from app.security.usuario_operativo import operativo_para_enforcement
 from app.security.admin_permissions import require_admin_permission, permisos_efectivos_admin
 from app.schemas.usuario_schema import (
     UsuarioCreate,
     UsuarioResponse,
     UsuarioUpdate,
+    UsuarioDetalleResponse,
     UsuarioPasswordAdminReset,
     MisPermisosAdminResponse,
 )
@@ -24,7 +27,9 @@ from app.services.usuario_service import (
     actualizar_activo_usuario,
     patch_usuario_por_admin,
     cambiar_password_usuario_por_admin,
+    usuario_a_detalle,
 )
+from app.services.usuario_extendido import UsuarioOperativo
 from app.repositories.usuario_repository import (
     listar_usuarios_por_empresa,
     listar_veterinarios_por_empresa,
@@ -71,6 +76,16 @@ def mis_permisos_admin(
 
 
 @router.get(
+    "/mi-operativo",
+    response_model=UsuarioOperativo,
+    summary="Mis privilegios operativos (consultorio, agenda, tutores)",
+)
+def mi_operativo(current_user=Depends(get_current_user)):
+    """Para la UI del panel: ocultar o habilitar módulos según flags del usuario actual."""
+    return operativo_para_enforcement(current_user)
+
+
+@router.get(
     "/",
     response_model=PaginatedResponse[UsuarioResponse],
     summary="Listar usuarios",
@@ -93,11 +108,33 @@ def listar_usuarios(
     summary="Listar veterinarios",
 )
 def listar_veterinarios(
+    solo_agenda_personal: bool = Query(
+        False,
+        description="Si true, solo veterinarios con «agenda personal» habilitada (asignables en citas).",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(1, 3)),
 ):
     """Lista veterinarios de la empresa (ADMIN y RECEPCIÓN, para asignar a citas)."""
-    return listar_veterinarios_por_empresa(db, current_user.empresa_id)
+    return listar_veterinarios_por_empresa(
+        db, current_user.empresa_id, solo_agenda_personal=solo_agenda_personal
+    )
+
+
+@router.get(
+    "/{usuario_id}",
+    response_model=UsuarioDetalleResponse,
+    summary="Detalle de usuario (configuración)",
+)
+def obtener_usuario(
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(1)),
+):
+    usuario = get_usuario_by_id_and_empresa(db, usuario_id, current_user.empresa_id)
+    if not usuario:
+        raise ApiError(code="usuario_not_found", message="Usuario no encontrado", status_code=404)
+    return usuario_a_detalle(usuario)
 
 
 @router.post("/", response_model=UsuarioResponse)
@@ -128,7 +165,7 @@ def actualizar_usuario(
     current_user=Depends(require_roles(1)),
     _perm=Depends(require_admin_permission("admin_gestion_usuarios")),
 ):
-    """Actualiza activo y/o perfil admin del usuario."""
+    """Actualiza datos del usuario (parcial)."""
     usuario = get_usuario_by_id_and_empresa(db, usuario_id, current_user.empresa_id)
     if not usuario:
         raise ApiError(code="usuario_not_found", message="Usuario no encontrado", status_code=404)

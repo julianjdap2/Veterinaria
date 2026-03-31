@@ -39,11 +39,21 @@ export default {
         '3xl': '1.25rem',
       },
       boxShadow: {
-        'card': '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
-        'card-hover': '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05)',
+        'card': '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06), 0 0 0 1px rgba(16, 185, 129, 0.04)',
+        'card-hover': '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05), 0 0 0 1px rgba(16, 185, 129, 0.06)',
+        /** Acento esmeralda (coherente con estado de cuenta / planes de salud) */
+        'panel': '0 8px 30px -12px rgba(5, 150, 105, 0.14), 0 0 0 1px rgba(16, 185, 129, 0.06)',
+        'panel-lg': '0 16px 44px -18px rgba(15, 118, 110, 0.2), 0 0 0 1px rgba(16, 185, 129, 0.07)',
+        'header-bar': '0 1px 0 0 rgba(16, 185, 129, 0.12)',
         'button': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
         'button-hover': '0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
         'inner-soft': 'inset 0 1px 2px 0 rgb(0 0 0 / 0.04)',
+      },
+      backgroundImage: {
+        'gradient-panel-nav':
+          'linear-gradient(135deg, rgba(236, 253, 245, 0.95) 0%, rgba(240, 253, 250, 0.9) 45%, rgba(236, 254, 255, 0.85) 100%)',
+        'gradient-table-head':
+          'linear-gradient(90deg, rgba(209, 250, 229, 0.95) 0%, rgba(204, 251, 241, 0.85) 50%, rgba(207, 250, 254, 0.75) 100%)',
       },
       keyframes: {
         'fade-in': {

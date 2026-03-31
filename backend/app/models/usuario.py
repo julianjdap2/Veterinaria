@@ -7,7 +7,7 @@ Representa a los usuarios que pueden
 acceder a la aplicación.
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, TIMESTAMP, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -26,6 +26,13 @@ class Usuario(Base):
     nombre = Column(String(100), nullable=False)
 
     email = Column(String(120), unique=True, nullable=False)
+
+    documento = Column(String(64), nullable=True)
+
+    telefono = Column(String(64), nullable=True)
+
+    # JSON: preferencias, operativo (toggles, servicios_relacionados), profesional
+    extendido_json = Column(Text, nullable=True)
 
     password_hash = Column(String(255), nullable=False)
 

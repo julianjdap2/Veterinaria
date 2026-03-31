@@ -1,13 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
+import { OnboardingHelpModal } from '../auth/OnboardingHelpModal'
+import { ONBOARDING_PENDING_HELP_KEY } from '../auth/onboardingHelpConfig'
 import { useAuthStore } from '../../core/auth-store'
 import { DASHBOARD_MODAL_PAGE_SIZE, ROLES } from '../../core/constants'
 import { useMisPermisosAdmin } from '../usuarios/hooks/useUsuarios'
 import { Card } from '../../shared/ui/Card'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { fetchDashboardNotificaciones, fetchDashboardResumen } from './api'
 import { Modal } from '../../shared/ui/Modal'
 import { fetchCitasAgenda } from '../citas/api'
 import { fetchVentas } from '../ventas/api'
+import { IconHeart } from '../../shared/ui/icons'
+import { Activity, CalendarCheck2, DollarSign, BellRing } from 'lucide-react'
 
 function formatDateTime(s: string | null): string {
   if (!s) return '—'
@@ -39,6 +46,7 @@ export function DashboardPage() {
   const [csvColumns, setCsvColumns] = useState<Record<string, boolean>>({})
   const [openAddBoard, setOpenAddBoard] = useState(false)
   const [customBoards, setCustomBoards] = useState<Array<{ id: string; title: string; value: string | number }>>([])
+  const [onboardingHelpOpen, setOnboardingHelpOpen] = useState(false)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard', 'resumen', dias],
     queryFn: () => fetchDashboardResumen(dias),
@@ -161,6 +169,12 @@ export function DashboardPage() {
     { label: 'Notif WhatsApp (hoy)', value: data?.notificaciones_whatsapp_hoy ?? 0 },
     { label: 'Notif fallidas (hoy)', value: data?.notificaciones_fallidas_hoy ?? 0 },
   ]
+  const kpiIcon = (label: string) => {
+    if (label.includes('Ventas') || label.includes('Ingresos') || label.includes('Ticket')) return DollarSign
+    if (label.includes('Notif')) return BellRing
+    if (label.includes('Citas') || label.includes('Pendientes') || label.includes('Confirmadas')) return CalendarCheck2
+    return Activity
+  }
 
   const modalRows = useMemo(() => {
     const q = modalSearch.trim().toLowerCase()
@@ -222,6 +236,17 @@ export function DashboardPage() {
     setModalSearch('')
   }, [modalColumnDefs, openModal])
 
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && localStorage.getItem(ONBOARDING_PENDING_HELP_KEY) === '1') {
+        localStorage.removeItem(ONBOARDING_PENDING_HELP_KEY)
+        setOnboardingHelpOpen(true)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   function exportModalCsv() {
     if (!openModal || modalRows.length === 0) return
     const selected = modalColumnDefs.filter((c) => csvColumns[c.key])
@@ -246,60 +271,118 @@ export function DashboardPage() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Cargando dashboard...</p>
+    return (
+      <>
+        <div className="w-full space-y-6 pb-10">
+          <div className="mb-8 border-b border-slate-200/90 pb-6">
+            <div className="mb-3 h-2.5 w-40 animate-pulse rounded bg-slate-200/90" />
+            <div className="h-7 w-56 max-w-full animate-pulse rounded-md bg-slate-200/90" />
+            <div className="mt-3 h-4 w-full max-w-xl animate-pulse rounded bg-slate-100" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div key={idx} className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white/80 shadow-sm" />
+            ))}
+          </div>
+        </div>
+        <OnboardingHelpModal open={onboardingHelpOpen} onClose={() => setOnboardingHelpOpen(false)} />
+      </>
+    )
   }
   if (isError || !data) {
-    return <p className="text-sm text-red-600">No se pudo cargar el dashboard.</p>
+    return (
+      <>
+        <div className="w-full space-y-4 pb-10">
+          <p className="rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-800">
+            No se pudo cargar el dashboard.
+          </p>
+        </div>
+        <OnboardingHelpModal open={onboardingHelpOpen} onClose={() => setOnboardingHelpOpen(false)} />
+      </>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setDias(1)}
-            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-              dias === 1
-                ? 'bg-primary-600 text-white'
-                : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            Hoy
-          </button>
-          <button
-            type="button"
-            onClick={() => setDias(7)}
-            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-              dias === 7
-                ? 'bg-primary-600 text-white'
-                : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            7 días
-          </button>
-          <button
-            type="button"
-            onClick={() => setDias(30)}
-            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-              dias === 30
-                ? 'bg-primary-600 text-white'
-                : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            30 días
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpenAddBoard(true)}
-            className="rounded-xl bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-700"
-          >
-            Añadir tablero
-          </button>
-        </div>
-      </div>
+    <>
+    <div className="w-full space-y-6 pb-10">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio' }]}
+        title="Dashboard"
+        subtitle="Resumen operativo de citas, ventas y notificaciones según el periodo seleccionado."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDias(1)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                dias === 1
+                  ? 'bg-primary-600 text-white shadow-sm'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Hoy
+            </button>
+            <button
+              type="button"
+              onClick={() => setDias(7)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                dias === 7
+                  ? 'bg-primary-600 text-white shadow-sm'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              7 días
+            </button>
+            <button
+              type="button"
+              onClick={() => setDias(30)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                dias === 30
+                  ? 'bg-primary-600 text-white shadow-sm'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              30 días
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpenAddBoard(true)}
+              className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
+            >
+              Añadir tablero
+            </button>
+          </div>
+        }
+      />
 
+      {isTenantAdmin ? (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+        <Card className="border-primary-200/80 bg-gradient-to-br from-primary-50 via-white to-slate-50/80 shadow-sm ring-1 ring-primary-100/60">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-primary-700">
+                <IconHeart className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Planes de salud y servicios</h2>
+                <p className="mt-0.5 max-w-xl text-sm text-slate-600">
+                  Suscripciones y paquetes anticipados: define coberturas, precio y vigencia; afilia mascotas y consulta el
+                  estado de cuenta.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/planes-salud"
+              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            >
+              Comenzar
+            </Link>
+          </div>
+        </Card>
+        </motion.div>
+      ) : null}
+
+      <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-2 shadow-card backdrop-blur">
       <div className="flex flex-wrap gap-2">
         {[
           ['resumen', 'Resumen'],
@@ -311,31 +394,43 @@ export function DashboardPage() {
             key={key}
             type="button"
             onClick={() => setActiveTab(key as typeof activeTab)}
-            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
+            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
               activeTab === key
-                ? 'bg-slate-900 text-white'
-                : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:-translate-y-0.5'
             }`}
           >
             {label}
           </button>
         ))}
       </div>
+      </div>
 
       {activeTab === 'resumen' ? (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {kpis.map((k) => (
-              <button
+            {kpis.map((k, idx) => (
+              <motion.button
                 key={k.label}
                 type="button"
                 onClick={() => setOpenModal(k.label)}
                 className="text-left"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(idx * 0.03, 0.3), duration: 0.22 }}
               >
-                <Card className="cursor-pointer ring-0 transition hover:-translate-y-0.5 hover:ring-2 hover:ring-primary-200/70" title={k.label}>
-                  <p className={`text-3xl font-bold ${kpiColor(k.label)}`}>{k.value}</p>
+                <Card className="cursor-pointer ring-0 transition hover:-translate-y-0.5 hover:ring-2 hover:ring-primary-200/70" title={k.label} contentClassName="p-4">
+                  <div className="flex items-center justify-between">
+                    <p className={`text-3xl font-bold ${kpiColor(k.label)}`}>{k.value}</p>
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                      {(() => {
+                        const Icon = kpiIcon(k.label)
+                        return <Icon className="h-5 w-5" />
+                      })()}
+                    </span>
+                  </div>
                 </Card>
-              </button>
+              </motion.button>
             ))}
           </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -391,6 +486,62 @@ export function DashboardPage() {
                   <div key={`${t.texto}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                     <span className="text-sm text-slate-700">{t.texto}</span>
                     <span className="text-sm font-semibold text-emerald-700">{t.cantidad}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+          <Card title="Top vacunas (consultas)">
+            <div className="space-y-2">
+              {data.top_vacunas_consulta.length === 0 ? (
+                <p className="text-sm text-slate-500">Sin datos en este periodo.</p>
+              ) : (
+                data.top_vacunas_consulta.map((t, idx) => (
+                  <div key={`${t.texto}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-700">{t.texto}</span>
+                    <span className="text-sm font-semibold text-sky-700">{t.cantidad}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+          <Card title="Top pruebas de laboratorio (consultas)">
+            <div className="space-y-2">
+              {data.top_pruebas_laboratorio_consulta.length === 0 ? (
+                <p className="text-sm text-slate-500">Sin datos en este periodo.</p>
+              ) : (
+                data.top_pruebas_laboratorio_consulta.map((t, idx) => (
+                  <div key={`${t.texto}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-700">{t.texto}</span>
+                    <span className="text-sm font-semibold text-indigo-700">{t.cantidad}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+          <Card title="Top hospitalización / ingresos (consultas)">
+            <div className="space-y-2">
+              {data.top_hospitalizacion_consulta.length === 0 ? (
+                <p className="text-sm text-slate-500">Sin datos en este periodo.</p>
+              ) : (
+                data.top_hospitalizacion_consulta.map((t, idx) => (
+                  <div key={`${t.texto}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-700">{t.texto}</span>
+                    <span className="text-sm font-semibold text-amber-700">{t.cantidad}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+          <Card title="Top procedimientos (citas)">
+            <div className="space-y-2">
+              {data.top_procedimientos_cita.length === 0 ? (
+                <p className="text-sm text-slate-500">Sin datos en este periodo.</p>
+              ) : (
+                data.top_procedimientos_cita.map((t, idx) => (
+                  <div key={`${t.texto}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-700">{t.texto}</span>
+                    <span className="text-sm font-semibold text-rose-700">{t.cantidad}</span>
                   </div>
                 ))
               )}
@@ -476,7 +627,7 @@ export function DashboardPage() {
                 type="button"
                 onClick={exportModalCsv}
                 disabled={visibleModalColumns.length === 0}
-                className="rounded-lg border border-primary-300 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-100"
+                className="rounded-lg border border-primary-300 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
               >
                 Exportar CSV
               </button>
@@ -538,5 +689,7 @@ export function DashboardPage() {
         </div>
       </Modal>
     </div>
+    <OnboardingHelpModal open={onboardingHelpOpen} onClose={() => setOnboardingHelpOpen(false)} />
+    </>
   )
 }

@@ -1,9 +1,9 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { DatesSetArg } from '@fullcalendar/core'
 import { useAuthStore } from '../../core/auth-store'
 import { ROLES } from '../../core/constants'
-import { useCitasAgenda } from './hooks/useCitasAgenda'
 import {
   fetchCitasAgenda,
   fetchCitasDisponibilidad,
@@ -15,14 +15,22 @@ import {
   promoteNextListaEspera,
 } from './api'
 import { useVeterinarios } from '../usuarios/hooks/useUsuarios'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
 import { Input } from '../../shared/ui/Input'
-import { Table, TableHead, TableBody, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
-import { Pagination } from '../../shared/ui/Pagination'
-import { AGENDA_CITA_DIA_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../core/constants'
+import { AGENDA_CITA_DIA_PAGE_SIZE } from '../../core/constants'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
+import type { AgendaFcView } from './CitasAgendaFullCalendar'
+import { CitasAgendaSchedulerView } from './CitasAgendaSchedulerView'
+
+const CitasAgendaFullCalendar = lazy(() =>
+  import('./CitasAgendaFullCalendar').then((m) => ({ default: m.CitasAgendaFullCalendar })),
+)
+import { toLocalISO } from './agendaDateUtils'
+import { CitaAgendaOpcionesModal } from './CitaAgendaOpcionesModal'
+import type { Cita } from '../../api/types'
 
 const ESTADOS = [
   { value: '', label: 'Todos' },
@@ -33,34 +41,68 @@ const ESTADOS = [
   { value: 'cancelada', label: 'Cancelada' },
 ] as const
 
-/** Etiqueta y estilos de pastilla para estado de cita (tabla y vista día). */
-function estadoCitaBadgeMeta(estado: string | null | undefined): { label: string; className: string } {
-  const e = estado ?? 'pendiente'
-  if (e === 'atendida') {
-    return { label: 'Finalizada', className: 'bg-emerald-100 text-emerald-800 ring-emerald-300' }
-  }
-  if (e === 'cancelada') {
-    return { label: 'Cancelada', className: 'bg-red-100 text-red-800 ring-red-300' }
-  }
-  if (e === 'confirmada') {
-    return { label: 'Confirmada', className: 'bg-sky-100 text-sky-800 ring-sky-300' }
-  }
-  if (e === 'revision') {
-    return { label: 'En curso', className: 'bg-primary-100 text-primary-800 ring-primary-300' }
-  }
-  return { label: 'Pendiente', className: 'bg-slate-100 text-slate-700 ring-slate-300' }
+type AgendaViewMode = 'day' | 'week' | 'month' | 'list' | 'scheduler'
+
+const VIEW_TABS: { id: AgendaViewMode; label: string }[] = [
+  { id: 'day', label: 'Día' },
+  { id: 'week', label: 'Semana' },
+  { id: 'month', label: 'Mes' },
+  { id: 'list', label: 'Lista' },
+  { id: 'scheduler', label: 'Programador' },
+]
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
 }
 
-function formatDateTime(s: string | null): string {
-  if (!s) return '—'
-  try {
-    return new Date(s).toLocaleString('es-ES', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    })
-  } catch {
-    return s
+function startOfWeekMonday(d: Date): Date {
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  const n = new Date(d)
+  n.setDate(diff)
+  n.setHours(0, 0, 0, 0)
+  return n
+}
+
+function makeDefaultRange(anchor: string, mode: AgendaViewMode): { desde: string; hasta: string } {
+  const d = new Date(`${anchor}T12:00:00`)
+  if (Number.isNaN(d.getTime())) {
+    const fb = new Date().toISOString().slice(0, 10)
+    return makeDefaultRange(fb, mode)
   }
+  if (mode === 'day' || mode === 'scheduler') {
+    return { desde: `${anchor}T00:00:00`, hasta: `${anchor}T23:59:59` }
+  }
+  if (mode === 'week' || mode === 'list') {
+    const s = startOfWeekMonday(d)
+    const e = new Date(s)
+    e.setDate(s.getDate() + 6)
+    const y1 = s.getFullYear()
+    const m1 = pad2(s.getMonth() + 1)
+    const d1 = pad2(s.getDate())
+    const y2 = e.getFullYear()
+    const m2 = pad2(e.getMonth() + 1)
+    const d2 = pad2(e.getDate())
+    return { desde: `${y1}-${m1}-${d1}T00:00:00`, hasta: `${y2}-${m2}-${d2}T23:59:59` }
+  }
+  const y = d.getFullYear()
+  const m = d.getMonth()
+  const first = new Date(y, m, 1)
+  const last = new Date(y, m + 1, 0)
+  const y1 = first.getFullYear()
+  const m1 = pad2(first.getMonth() + 1)
+  const d1 = pad2(first.getDate())
+  const y2 = last.getFullYear()
+  const m2 = pad2(last.getMonth() + 1)
+  const d2 = pad2(last.getDate())
+  return { desde: `${y1}-${m1}-${d1}T00:00:00`, hasta: `${y2}-${m2}-${d2}T23:59:59` }
+}
+
+function fromDatesSetRange(arg: DatesSetArg): { desde: string; hasta: string } {
+  const desde = toLocalISO(arg.start)
+  const endInclusive = new Date(arg.end.getTime() - 1)
+  const hasta = toLocalISO(endInclusive)
+  return { desde, hasta }
 }
 
 function waitMinutesFrom(createdAt: string | null): number {
@@ -70,27 +112,33 @@ function waitMinutesFrom(createdAt: string | null): number {
   return Math.max(0, Math.floor((Date.now() - t) / 60000))
 }
 
+const FC_BY_MODE: Record<'day' | 'week' | 'month' | 'list', AgendaFcView> = {
+  day: 'timeGridDay',
+  week: 'timeGridWeek',
+  month: 'dayGridMonth',
+  list: 'listWeek',
+}
+
 export function CitasAgendaPage() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(DEFAULT_PAGE_SIZE)
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
   const [estado, setEstado] = useState('')
   const [soloEnSalaEspera, setSoloEnSalaEspera] = useState(false)
   const prevEstadoBeforeSalaRef = useRef<string | null>(null)
-  const [misCitas, setMisCitas] = useState(false)
-  const [vistaCalendarioDia, setVistaCalendarioDia] = useState(false)
+  const [mostrarDisponibilidad, setMostrarDisponibilidad] = useState(false)
+  const [agendaView, setAgendaView] = useState<AgendaViewMode>('day')
 
   const isVet = user?.rolId === ROLES.VETERINARIO
-
   const today = new Date().toISOString().slice(0, 10)
   const [fechaCalendarioDia, setFechaCalendarioDia] = useState(today)
-  const [mostrarDisponibilidad, setMostrarDisponibilidad] = useState(false)
   const [fechaDisponibilidad, setFechaDisponibilidad] = useState(today)
-  const [vetDisponibilidadId, setVetDisponibilidadId] = useState<string>(() => (isVet ? String(user?.userId ?? '') : ''))
+  const [vetDisponibilidadId, setVetDisponibilidadId] = useState<string>(() =>
+    isVet ? String(user?.userId ?? '') : '',
+  )
+
+  const [queryRange, setQueryRange] = useState(() => makeDefaultRange(today, 'day'))
+  const [citaOpciones, setCitaOpciones] = useState<Cita | null>(null)
 
   useEffect(() => {
     if (isVet && user?.userId) {
@@ -103,171 +151,140 @@ export function CitasAgendaPage() {
       if (prevEstadoBeforeSalaRef.current === null) {
         prevEstadoBeforeSalaRef.current = estado
       }
-      // Reducimos ruido: para "en sala de espera" el estado más útil es confirmada.
       if (!estado || !['confirmada', 'revision'].includes(estado)) {
         setEstado('confirmada')
       }
-      setPage(1)
       return
     }
-
-    // Restauramos el estado previo cuando se desactiva el filtro.
     if (prevEstadoBeforeSalaRef.current !== null) {
       setEstado(prevEstadoBeforeSalaRef.current)
       prevEstadoBeforeSalaRef.current = null
-      setPage(1)
     }
   }, [soloEnSalaEspera, estado])
+
+  const setAgendaViewAndRange = useCallback((mode: AgendaViewMode) => {
+    setAgendaView(mode)
+    setQueryRange(makeDefaultRange(fechaCalendarioDia, mode))
+  }, [fechaCalendarioDia])
 
   const puedeAsignarVet = user?.rolId === ROLES.ADMIN || user?.rolId === ROLES.RECEPCION
   const { data: veterinarios = [] } = useVeterinarios({ enabled: puedeAsignarVet })
 
-  const filters = {
-    page,
-    page_size: pageSize,
-    fecha_desde: fechaDesde || undefined,
-    fecha_hasta: fechaHasta || undefined,
-    estado: estado || undefined,
-    veterinario_id: isVet && misCitas && user?.userId ? user.userId : undefined,
-    en_sala_espera: soloEnSalaEspera || undefined,
-  }
-  const { data, isLoading, isError, error } = useCitasAgenda(filters)
-
   const vetDisponibilidadNum = vetDisponibilidadId ? parseInt(vetDisponibilidadId, 10) : null
   const puedeReprogramar = user?.rolId === ROLES.ADMIN || user?.rolId === ROLES.RECEPCION
+
+  const vetParam: number | undefined = isVet
+    ? user?.userId
+    : vetDisponibilidadNum != null && !Number.isNaN(vetDisponibilidadNum)
+      ? vetDisponibilidadNum
+      : undefined
+
+  const { data: citasQuery, isLoading: loadingCitas } = useQuery({
+    queryKey: [
+      'citas',
+      'calendario',
+      queryRange.desde,
+      queryRange.hasta,
+      vetParam,
+      estado,
+      soloEnSalaEspera,
+    ],
+    queryFn: () =>
+      fetchCitasAgenda({
+        page: 1,
+        page_size: AGENDA_CITA_DIA_PAGE_SIZE,
+        fecha_desde: queryRange.desde,
+        fecha_hasta: queryRange.hasta,
+        veterinario_id: vetParam,
+        estado: estado || undefined,
+        en_sala_espera: soloEnSalaEspera || undefined,
+      }),
+    enabled: (isVet || puedeReprogramar) && !!queryRange.desde,
+  })
+
+  const citasItems = citasQuery?.items ?? []
+
+  const abrirOpcionesCitaPorId = useCallback(
+    (id: number) => {
+      const c = citasItems.find((x) => x.id === id)
+      if (c) setCitaOpciones(c)
+    },
+    [citasItems],
+  )
+
+  const abrirOpcionesModalConCita = useCallback((c: Cita) => {
+    setCitaOpciones(c)
+  }, [])
+
   const { data: disponibilidad, isLoading: loadingDisp } = useQuery({
     queryKey: ['citas', 'disponibilidad', fechaDisponibilidad, vetDisponibilidadNum],
     queryFn: () => fetchCitasDisponibilidad(fechaDisponibilidad, vetDisponibilidadNum as number),
     enabled: mostrarDisponibilidad && !!fechaDisponibilidad && vetDisponibilidadNum != null,
   })
 
-  const efectivoVetCalendario = isVet ? (user?.userId ?? null) : vetDisponibilidadNum
-
-  const { data: citasDia, isLoading: loadingCitasDia } = useQuery({
-    queryKey: ['citas', 'calendario_dia', fechaCalendarioDia, efectivoVetCalendario],
-    queryFn: () =>
-      fetchCitasAgenda({
-        page: 1,
-        page_size: AGENDA_CITA_DIA_PAGE_SIZE,
-        fecha_desde: `${fechaCalendarioDia}T00:00:00`,
-        fecha_hasta: `${fechaCalendarioDia}T23:59:59`,
-        veterinario_id: efectivoVetCalendario as number,
-      }),
-    enabled: vistaCalendarioDia && efectivoVetCalendario != null && (isVet || puedeReprogramar),
-  })
-
   const { data: disponibilidadDia, isLoading: loadingDispDia } = useQuery({
-    queryKey: ['citas', 'disponibilidad', fechaCalendarioDia, efectivoVetCalendario],
-    queryFn: () => fetchCitasDisponibilidad(fechaCalendarioDia, efectivoVetCalendario as number),
-    enabled: vistaCalendarioDia && efectivoVetCalendario != null,
+    queryKey: ['citas', 'disponibilidad', fechaCalendarioDia, vetDisponibilidadNum],
+    queryFn: () => fetchCitasDisponibilidad(fechaCalendarioDia, vetDisponibilidadNum as number),
+    enabled: vetDisponibilidadNum != null && (agendaView === 'day' || agendaView === 'scheduler'),
   })
 
   const { data: listaEspera = [], isLoading: loadingWaitlist } = useQuery({
-    queryKey: ['citas', 'waitlist', fechaCalendarioDia, efectivoVetCalendario],
+    queryKey: ['citas', 'waitlist', fechaCalendarioDia, vetDisponibilidadNum],
     queryFn: () =>
-      fetchListaEspera(fechaCalendarioDia, efectivoVetCalendario as number, false, false),
-    enabled: vistaCalendarioDia && efectivoVetCalendario != null && puedeReprogramar,
+      fetchListaEspera(fechaCalendarioDia, vetDisponibilidadNum as number, false, false),
+    enabled:
+      vetDisponibilidadNum != null &&
+      puedeReprogramar &&
+      (agendaView === 'day' || agendaView === 'scheduler'),
   })
 
-  const SLOT_MINUTES = 30
-  const JORNADA_INICIO_MIN = 8 * 60
-  const JORNADA_FIN_MIN = 18 * 60 + 30
-
-  function minutesToSlotLabel(totalMinutes: number): string {
-    const hh = Math.floor(totalMinutes / 60)
-    const mm = totalMinutes % 60
-    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
-  }
-
-  const slotsDia = useMemo(() => {
-    const slots: string[] = []
-    for (let m = JORNADA_INICIO_MIN; m <= JORNADA_FIN_MIN; m += SLOT_MINUTES) {
-      slots.push(minutesToSlotLabel(m))
-    }
-    return slots
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  function slotLabelFromISO(iso: string | null): string | null {
-    if (!iso) return null
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return null
-    const totalMinutes = d.getHours() * 60 + d.getMinutes()
-    const rounded = Math.floor(totalMinutes / SLOT_MINUTES) * SLOT_MINUTES
-    return minutesToSlotLabel(rounded)
-  }
-
-  function startOfWeekISO(today: string): string {
-  const d = new Date(`${today}T12:00:00`)
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-  d.setDate(diff)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dayN = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dayN}`
-}
-
-function endOfWeekISOFromStart(start: string): string {
-  const d = new Date(`${start}T12:00:00`)
-  d.setDate(d.getDate() + 6)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dayN = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dayN}`
-}
-
-function addDaysISO(iso: string, deltaDays: number): string {
-    const d = new Date(`${iso}T00:00:00`)
-    d.setDate(d.getDate() + deltaDays)
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }
-
-  const citasDiaItems = citasDia?.items ?? []
-  /** Nombres de mascota ya resueltos en las citas del día (para lista de espera sin request extra). */
   const nombresMascotasDesdeCitasDia = useMemo(() => {
     const m = new Map<number, string>()
-    for (const c of citasDiaItems) {
-      if (c.mascota_nombre) m.set(c.mascota_id, c.mascota_nombre)
+    for (const c of citasItems) {
+      if (c.mascota_id != null && c.mascota_nombre) m.set(c.mascota_id, c.mascota_nombre)
     }
     return m
-  }, [citasDiaItems])
-  const reservedSlots = new Set(disponibilidadDia?.reservado ?? [])
+  }, [citasItems])
 
-  const citasPorSlot = useMemo(() => {
-    const map: Record<string, typeof citasDiaItems> = {}
-    for (const s of slotsDia) map[s] = []
-    for (const c of citasDiaItems) {
-      const slot = slotLabelFromISO(c.fecha)
-      if (slot && map[slot]) map[slot].push(c)
-    }
-    // Priorización visual simple: urgentes primero dentro de cada slot.
-    for (const s of slotsDia) {
-      map[s].sort((a, b) => {
-        const urgA = a.urgente ? 1 : 0
-        const urgB = b.urgente ? 1 : 0
-        if (urgA !== urgB) return urgB - urgA
-        return (a.id ?? 0) - (b.id ?? 0)
-      })
-    }
-    return map
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [citasDiaItems, slotsDia])
+  const citasSchedulerDia = useMemo(() => {
+    return citasItems.filter((c) => {
+      if (!c.fecha) return false
+      const d = new Date(c.fecha)
+      const y = d.getFullYear()
+      const m = pad2(d.getMonth() + 1)
+      const day = pad2(d.getDate())
+      return `${y}-${m}-${day}` === fechaCalendarioDia
+    })
+  }, [citasItems, fechaCalendarioDia])
 
-  const [draggingCitaId, setDraggingCitaId] = useState<number | null>(null)
+  const onFcDatesSet = useCallback(
+    (arg: DatesSetArg) => {
+      const r = fromDatesSetRange(arg)
+      setQueryRange(r)
+      if (agendaView === 'day') {
+        setFechaCalendarioDia(r.desde.slice(0, 10))
+      }
+    },
+    [agendaView],
+  )
 
   const reprogramarMutation = useMutation({
-    mutationFn: (payload: { citaId: number; nuevaFechaISO: string; veterinario_id: number | null }) =>
-      updateCita(payload.citaId, { fecha: payload.nuevaFechaISO, veterinario_id: payload.veterinario_id }),
+    mutationFn: (payload: {
+      citaId: number
+      nuevaFechaISO: string
+      nuevaFechaFinISO?: string
+      veterinario_id?: number | null
+    }) => {
+      const body: Parameters<typeof updateCita>[1] = {
+        fecha: payload.nuevaFechaISO,
+        ...(payload.nuevaFechaFinISO ? { fecha_fin: payload.nuevaFechaFinISO } : {}),
+        ...(payload.veterinario_id !== undefined ? { veterinario_id: payload.veterinario_id } : {}),
+      }
+      return updateCita(payload.citaId, body)
+    },
     onSuccess: () => {
       toast.success('Cita reprogramada')
-      queryClient.invalidateQueries({ queryKey: ['citas', 'agenda'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'disponibilidad'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'calendario_dia'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'waitlist'] })
+      queryClient.invalidateQueries({ queryKey: ['citas'] })
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : 'Error al reprogramar'
@@ -279,10 +296,7 @@ function addDaysISO(iso: string, deltaDays: number): string {
     mutationFn: (entryId: number) => promoteListaEspera(entryId),
     onSuccess: () => {
       toast.success('Entrada promovida y cita creada')
-      queryClient.invalidateQueries({ queryKey: ['citas', 'agenda'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'disponibilidad'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'calendario_dia'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'waitlist'] })
+      queryClient.invalidateQueries({ queryKey: ['citas'] })
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : 'Error al promover entrada'
@@ -315,13 +329,10 @@ function addDaysISO(iso: string, deltaDays: number): string {
   })
 
   const promoteNextWaitlistMutation = useMutation({
-    mutationFn: () => promoteNextListaEspera(fechaCalendarioDia, efectivoVetCalendario as number),
+    mutationFn: () => promoteNextListaEspera(fechaCalendarioDia, vetDisponibilidadNum as number),
     onSuccess: () => {
       toast.success('Siguiente de la cola asignado')
-      queryClient.invalidateQueries({ queryKey: ['citas', 'agenda'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'disponibilidad'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'calendario_dia'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'waitlist'] })
+      queryClient.invalidateQueries({ queryKey: ['citas'] })
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : 'No se pudo asignar el siguiente'
@@ -329,103 +340,100 @@ function addDaysISO(iso: string, deltaDays: number): string {
     },
   })
 
-  const checkInMutation = useMutation({
-    mutationFn: (citaId: number) => updateCita(citaId, { estado: 'confirmada' }),
-    onSuccess: () => {
-      toast.success('Check-in registrado')
-      queryClient.invalidateQueries({ queryKey: ['citas', 'agenda'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'calendario_dia'] })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'disponibilidad'] })
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : 'Error al confirmar llegada'
-      toast.error(msg)
-    },
-  })
+  async function handleCalendarEventDrop(citaId: number, start: Date, end: Date) {
+    await reprogramarMutation.mutateAsync({
+      citaId,
+      nuevaFechaISO: toLocalISO(start),
+      nuevaFechaFinISO: toLocalISO(end),
+    })
+  }
+
+  function irAHoy() {
+    setFechaCalendarioDia(today)
+    setQueryRange(makeDefaultRange(today, agendaView))
+  }
+
+  function shiftDay(delta: number) {
+    const d = new Date(`${fechaCalendarioDia}T12:00:00`)
+    d.setDate(d.getDate() + delta)
+    const y = d.getFullYear()
+    const m = pad2(d.getMonth() + 1)
+    const day = pad2(d.getDate())
+    const next = `${y}-${m}-${day}`
+    setFechaCalendarioDia(next)
+    setQueryRange(makeDefaultRange(next, agendaView))
+  }
+
+  const editableFc = puedeReprogramar && agendaView !== 'list'
+  const showWaitlistPanel =
+    puedeReprogramar && (agendaView === 'day' || agendaView === 'scheduler') && vetDisponibilidadNum != null
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Agenda de citas</h1>
-        {!isVet && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setVistaCalendarioDia((v) => !v)
-                setMostrarDisponibilidad(false)
-              }}
-            >
-              {vistaCalendarioDia ? 'Ver lista' : 'Calendario'}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setMostrarDisponibilidad((v) => !v)}
-            >
-              {mostrarDisponibilidad ? 'Ocultar' : 'Ver citas'}
-            </Button>
-            <Button
-              variant={soloEnSalaEspera ? 'primary' : 'secondary'}
-              onClick={() => {
-                setSoloEnSalaEspera((v) => !v)
-                setPage(1)
-              }}
-            >
-              Solo en sala de espera
-            </Button>
-            <Link to="/citas/nuevo">
-              <Button>Nueva cita</Button>
-            </Link>
-          </div>
-        )}
-      </div>
+    <div className="w-full space-y-6 pb-10">
+      <CitaAgendaOpcionesModal
+        cita={citaOpciones}
+        open={citaOpciones != null}
+        onClose={() => setCitaOpciones(null)}
+      />
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Citas' }]}
+        title="Agenda de citas"
+        subtitle={
+          isVet
+            ? 'Calendario unificado: cambia de vista y arrastra para reprogramar cuando esté permitido.'
+            : 'Vistas día, semana, mes, lista y programador. Filtra por veterinario o ve todas las citas. Disponibilidad y sala de espera requieren veterinario seleccionado.'
+        }
+        actions={
+          !isVet ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={mostrarDisponibilidad ? 'primary' : 'secondary'}
+                onClick={() => setMostrarDisponibilidad((v) => !v)}
+              >
+                {mostrarDisponibilidad ? 'Ocultar disponibilidad' : 'Disponibilidad'}
+              </Button>
+              <Button
+                variant={soloEnSalaEspera ? 'primary' : 'secondary'}
+                onClick={() => setSoloEnSalaEspera((v) => !v)}
+              >
+                Solo sala de espera
+              </Button>
+              <Link to="/citas/nuevo">
+                <Button>Nueva cita</Button>
+              </Link>
+            </div>
+          ) : undefined
+        }
+      />
 
-      <Card title="Citas">
+      <DataListPanel
+        kicker="Agenda"
+        title="Citas"
+        clipOverflow={false}
+        description="Filtra por estado. Sin veterinario seleccionado se muestran todas las citas del rango (admin/recepción). La disponibilidad y la lista de espera necesitan un veterinario."
+      >
         <div className="space-y-4">
           <div className="flex flex-wrap items-end gap-4">
-            <div className="min-w-[170px]">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Desde</label>
-              <input
-                type="date"
-                value={fechaDesde}
-                onChange={(e) => {
-                  setFechaDesde(e.target.value)
-                  setPage(1)
-                }}
-                className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-              />
-            </div>
-
-            <div className="min-w-[170px]">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Hasta</label>
-              <input
-                type="date"
-                value={fechaHasta}
-                onChange={(e) => {
-                  setFechaHasta(e.target.value)
-                  setPage(1)
-                }}
-                className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-              />
-            </div>
-
-            {isVet && (
-              <label className="flex items-center gap-2 pb-1 text-sm text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={misCitas}
-                  onChange={(e) => {
-                    setMisCitas(e.target.checked)
-                    setPage(1)
-                  }}
-                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                Mis citas
-              </label>
+            {!isVet && (
+              <div className="min-w-[220px]">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Veterinario</label>
+                <select
+                  value={vetDisponibilidadId}
+                  onChange={(e) => setVetDisponibilidadId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+                >
+                  <option value="">Todos</option>
+                  {veterinarios.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Estado</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Estado</label>
               <div className="flex flex-nowrap gap-2 overflow-x-auto pb-1">
                 {ESTADOS.map((e) => {
                   const active = estado === e.value
@@ -433,10 +441,7 @@ function addDaysISO(iso: string, deltaDays: number): string {
                     <button
                       key={e.value || 'all'}
                       type="button"
-                      onClick={() => {
-                        setEstado(e.value)
-                        setPage(1)
-                      }}
+                      onClick={() => setEstado(e.value)}
                       className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
                         active
                           ? 'bg-primary-600 text-white ring-primary-600'
@@ -449,38 +454,10 @@ function addDaysISO(iso: string, deltaDays: number): string {
                 })}
               </div>
             </div>
-
-            <div className="flex flex-wrap items-end gap-2">
-              <Button
-                variant="secondary"
-                type="button"
-                className="h-9 text-xs"
-                onClick={() => {
-                  setFechaDesde('')
-                  setFechaHasta('')
-                  setPage(1)
-                }}
-              >
-                Limpiar fechas
-              </Button>
-              <Button
-                variant="secondary"
-                type="button"
-                className="h-9 text-xs"
-                onClick={() => {
-                  const s = startOfWeekISO(today)
-                  setFechaDesde(s)
-                  setFechaHasta(endOfWeekISOFromStart(s))
-                  setPage(1)
-                }}
-              >
-                Esta semana
-              </Button>
-            </div>
           </div>
 
           {!isVet && mostrarDisponibilidad && (
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 backdrop-blur p-4 shadow-card">
+            <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-card backdrop-blur">
               <div className="flex flex-wrap items-end gap-4">
                 <Input
                   type="date"
@@ -490,35 +467,32 @@ function addDaysISO(iso: string, deltaDays: number): string {
                   min={today}
                   className="max-w-[180px]"
                 />
-
-                {!isVet && (
-                  <div className="min-w-[220px]">
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Veterinario</label>
-                    <select
-                      value={vetDisponibilidadId}
-                      onChange={(e) => setVetDisponibilidadId(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-                    >
-                      <option value="">Seleccionar veterinario</option>
-                      {veterinarios.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div className="min-w-[220px]">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Veterinario</label>
+                  <select
+                    value={vetDisponibilidadId}
+                    onChange={(e) => setVetDisponibilidadId(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
+                  >
+                    <option value="">Seleccionar veterinario</option>
+                    {veterinarios.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
               <div className="mt-4">
                 {loadingDisp ? (
-                  <p className="text-sm text-gray-500">Cargando horarios...</p>
+                  <p className="text-sm text-slate-500">Cargando horarios...</p>
                 ) : !disponibilidad ? (
-                  <p className="text-sm text-gray-500">Selecciona fecha y veterinario.</p>
+                  <p className="text-sm text-slate-500">Selecciona fecha y veterinario.</p>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-600">
-                      Reservadas: {disponibilidad.reservado.length ? disponibilidad.reservado.join(', ') : '—'}
+                    <p className="text-sm text-slate-600">
+                      Reservadas:{' '}
+                      {disponibilidad.reservado.length ? disponibilidad.reservado.join(', ') : '—'}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {disponibilidad.disponible.length ? (
@@ -534,13 +508,13 @@ function addDaysISO(iso: string, deltaDays: number): string {
                                 },
                               })
                             }
-                            className="rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-800 hover:bg-primary-100 transition-colors"
+                            className="rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-800 transition-colors hover:bg-primary-100"
                           >
                             {t}
                           </button>
                         ))
                       ) : (
-                        <p className="text-sm text-gray-500">No hay horarios disponibles.</p>
+                        <p className="text-sm text-slate-500">No hay horarios disponibles.</p>
                       )}
                     </div>
                   </>
@@ -549,205 +523,144 @@ function addDaysISO(iso: string, deltaDays: number): string {
             </div>
           )}
 
-          {isError && (
-            <p className="text-sm text-red-600">
-              {error instanceof Error ? error.message : 'Error al cargar citas'}
-            </p>
-          )}
-          {!vistaCalendarioDia && isLoading && <p className="text-sm text-gray-500">Cargando...</p>}
-
-          {vistaCalendarioDia ? (
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 backdrop-blur p-4 shadow-card">
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="flex items-end gap-2">
-                  {!isVet && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => setFechaCalendarioDia((d) => addDaysISO(d, -1))}
-                      disabled={reprogramarMutation.isPending}
-                    >
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-card backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {agendaView === 'scheduler' ? (
+                  <>
+                    <Button variant="secondary" type="button" onClick={() => shiftDay(-1)}>
                       Anterior
                     </Button>
-                  )}
-                  <Input
-                    type="date"
-                    label="Día"
-                    value={fechaCalendarioDia}
-                    onChange={(e) => setFechaCalendarioDia(e.target.value)}
-                    min={today}
-                    className="max-w-[180px]"
-                  />
-                  {!isVet && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => setFechaCalendarioDia((d) => addDaysISO(d, 1))}
-                      disabled={reprogramarMutation.isPending}
-                    >
+                    <Button variant="secondary" type="button" onClick={irAHoy}>
+                      Hoy
+                    </Button>
+                    <Button variant="secondary" type="button" onClick={() => shiftDay(1)}>
                       Siguiente
                     </Button>
-                  )}
-                </div>
-
-                {!isVet && (
-                  <div className="min-w-[220px]">
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Veterinario</label>
-                    <select
-                      value={vetDisponibilidadId}
-                      onChange={(e) => setVetDisponibilidadId(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-                    >
-                      <option value="">Seleccionar veterinario</option>
-                      {veterinarios.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4">
-                {loadingCitasDia || loadingDispDia ? (
-                  <p className="text-sm text-gray-500">Cargando calendario...</p>
-                ) : !efectivoVetCalendario ? (
-                  <p className="text-sm text-gray-500">Selecciona fecha y veterinario.</p>
-                ) : (
-                  <>
-                    <p className="text-sm text-gray-600">
-                      Reservados: {disponibilidadDia?.reservado?.length ?? 0} | Libres: {disponibilidadDia?.disponible?.length ?? 0}
-                    </p>
-                    <div className="space-y-2">
-                      {slotsDia.map((slot) => (
-                      <div key={slot} className="grid grid-cols-[80px_1fr] gap-2 items-start">
-                        <div className="pt-2 text-xs font-semibold text-gray-600">{slot}</div>
-                        <div
-                          className={`min-h-[42px] rounded-xl border p-2 transition-colors ${
-                            reservedSlots.has(slot)
-                              ? citasPorSlot[slot]?.length
-                                ? 'border-primary-200 bg-primary-50/40'
-                                : 'border-red-200 bg-red-50/30'
-                              : 'border-slate-200/80 bg-white/40'
-                          } ${puedeReprogramar ? 'cursor-grab' : 'cursor-not-allowed'}`}
-                          onDragOver={(e) => {
-                            if (!puedeReprogramar || reprogramarMutation.isPending) return
-                            e.preventDefault()
-                            e.dataTransfer.dropEffect = 'move'
-                          }}
-                          onDrop={(e) => {
-                            if (!puedeReprogramar || reprogramarMutation.isPending) return
-                            e.preventDefault()
-                            const raw = e.dataTransfer.getData('text/plain')
-                            if (!raw) return
-                            const citaId = parseInt(raw, 10)
-                            if (!citaId) return
-                            const cita = citasDiaItems.find((c) => c.id === citaId)
-                            if (!cita) return
-
-                            const fromSlot = slotLabelFromISO(cita.fecha)
-                            if (reservedSlots.has(slot) && fromSlot !== slot) {
-                              toast.warning('Ese horario ya está reservado')
-                              return
-                            }
-
-                            const nuevaFechaISO = `${fechaCalendarioDia}T${slot}:00`
-                            reprogramarMutation.mutate({
-                              citaId,
-                              nuevaFechaISO,
-                              veterinario_id: cita.veterinario_id ?? efectivoVetCalendario,
-                            })
-                          }}
-                        >
-                          {(citasPorSlot[slot] ?? []).length ? (
-                            <div className="space-y-2">
-                              {citasPorSlot[slot].map((c) => (
-                                <div
-                                  key={c.id}
-                                  draggable={puedeReprogramar && !reprogramarMutation.isPending}
-                                  onDragStart={(e) => {
-                                    if (!puedeReprogramar || reprogramarMutation.isPending) return
-                                    setDraggingCitaId(c.id)
-                                    e.dataTransfer.setData('text/plain', String(c.id))
-                                  }}
-                                  onDragEnd={() => setDraggingCitaId(null)}
-                                  className={`select-none rounded-lg border px-2 py-1.5 ${
-                                    draggingCitaId === c.id
-                                      ? 'border-primary-400 bg-primary-50'
-                                      : 'border-primary-200 bg-white/70'
-                                  }`}
-                                  title="Arrastra para reprogramar"
-                                >
-                                  <div className="text-[12px] font-semibold text-slate-800">
-                                    {c.mascota_nombre ?? `Mascota #${c.mascota_id}`}
-                                  </div>
-                                  <div className="text-[11px] text-slate-600 truncate">{c.motivo ?? '—'}</div>
-                                  {(() => {
-                                    const st = estadoCitaBadgeMeta(c.estado)
-                                    return (
-                                      <span
-                                        className={`mt-0.5 inline-flex max-w-full truncate rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${st.className}`}
-                                      >
-                                        {st.label}
-                                      </span>
-                                    )
-                                  })()}
-                                  {c.urgente ? (
-                                    <div className="text-[10px] font-bold text-red-700">URGENTE</div>
-                                  ) : null}
-                                  {c.en_sala_espera ? (
-                                    <div className="text-[10px] font-semibold text-amber-700">EN SALA DE ESPERA</div>
-                                  ) : null}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-slate-400 pt-1">Libre</div>
-                          )}
-                        </div>
-                      </div>
-                      ))}
-                    </div>
                   </>
-                )}
+                ) : null}
+                <Input
+                  type="date"
+                  label="Ir a fecha"
+                  value={fechaCalendarioDia}
+                  min={isVet ? today : undefined}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setFechaCalendarioDia(v)
+                    setQueryRange(makeDefaultRange(v, agendaView))
+                  }}
+                  className="max-w-[180px]"
+                />
               </div>
+              <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50/80 p-1">
+                {VIEW_TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setAgendaViewAndRange(t.id)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      agendaView === t.id
+                        ? 'bg-primary-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              <details className="mt-4 rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur shadow-card group">
-                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-800 flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    Lista de espera
-                    <span className="text-xs font-normal text-slate-500 group-open:hidden">
-                      (expandir)
-                    </span>
+            {loadingCitas ? (
+              <p className="text-sm text-slate-500">Cargando citas...</p>
+            ) : agendaView === 'scheduler' ? (
+              <>
+                {vetDisponibilidadNum != null && !loadingDispDia ? (
+                  <p className="text-sm text-slate-600">
+                    Reservados: {disponibilidadDia?.reservado?.length ?? 0} | Libres:{' '}
+                    {disponibilidadDia?.disponible?.length ?? 0}
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    Selecciona un veterinario para ver huecos libres y la lista de espera.
+                  </p>
+                )}
+                <CitasAgendaSchedulerView
+                  diaISO={fechaCalendarioDia}
+                  citas={citasSchedulerDia}
+                  veterinarios={veterinarios}
+                  editable={puedeReprogramar}
+                  reprogramando={reprogramarMutation.isPending}
+                  onCitaClick={(c) => setCitaOpciones(c)}
+                  onReprogramar={(p) =>
+                    reprogramarMutation.mutate({
+                      citaId: p.citaId,
+                      nuevaFechaISO: p.nuevaFechaISO,
+                      veterinario_id: p.veterinario_id,
+                    })
+                  }
+                />
+              </>
+            ) : (
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[min(78vh,900px)] items-center justify-center rounded-2xl border border-emerald-100/60 bg-white text-sm text-slate-600 shadow-card ring-1 ring-emerald-50/40">
+                    Cargando calendario…
+                  </div>
+                }
+              >
+                <CitasAgendaFullCalendar
+                  view={FC_BY_MODE[agendaView as keyof typeof FC_BY_MODE]}
+                  citas={citasItems}
+                  initialDate={fechaCalendarioDia}
+                  calendarKey={`${agendaView}-${fechaCalendarioDia}`}
+                  height="min(78vh, 900px)"
+                  editable={editableFc}
+                  onDatesSet={onFcDatesSet}
+                  onEventClick={abrirOpcionesCitaPorId}
+                  onAbrirOpcionesCita={abrirOpcionesModalConCita}
+                  onEventDrop={handleCalendarEventDrop}
+                />
+              </Suspense>
+            )}
+          </div>
+
+          {showWaitlistPanel && (
+            <details className="rounded-xl border border-slate-200/70 bg-white/70 shadow-card backdrop-blur group open:shadow-md">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-slate-800">
+                <span className="flex items-center gap-2">
+                  Lista de espera
+                  <span className="hidden text-xs font-normal text-slate-500 group-open:inline">
+                    (expandir)
                   </span>
-                  <span className="text-slate-400 text-xs">▼</span>
-                </summary>
-                <div className="border-t border-slate-100 px-4 pb-4 pt-2">
+                </span>
+                <span className="text-xs text-slate-400">▼</span>
+              </summary>
+              <div className="border-t border-slate-100 px-4 pb-4 pt-2">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-sm font-semibold text-slate-800 sr-only">Lista de espera</h3>
-                    <span className="text-xs text-gray-500">
-                      {loadingWaitlist ? '...' : listaEspera.length ? `${listaEspera.length} pendiente(s)` : 'Sin pendientes'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      className="h-8 px-3 text-xs"
-                      disabled={
-                        promoteNextWaitlistMutation.isPending ||
-                      efectivoVetCalendario == null ||
-                        listaEspera.length === 0
-                      }
-                      onClick={() => promoteNextWaitlistMutation.mutate()}
-                    >
-                      Asignar siguiente
-                    </Button>
-                  </div>
+                  <span className="text-xs text-slate-500">
+                    {loadingWaitlist
+                      ? '...'
+                      : listaEspera.length
+                        ? `${listaEspera.length} pendiente(s)`
+                        : 'Sin pendientes'}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    className="h-8 px-3 text-xs"
+                    disabled={
+                      promoteNextWaitlistMutation.isPending ||
+                      vetDisponibilidadNum == null ||
+                      listaEspera.length === 0
+                    }
+                    onClick={() => promoteNextWaitlistMutation.mutate()}
+                  >
+                    Asignar siguiente
+                  </Button>
                 </div>
                 {loadingWaitlist ? (
-                  <p className="mt-2 text-sm text-gray-500">Cargando lista de espera...</p>
+                  <p className="mt-2 text-sm text-slate-500">Cargando lista de espera...</p>
                 ) : listaEspera.length === 0 ? (
-                  <p className="mt-2 text-sm text-gray-500">Nadie en espera para este slot.</p>
+                  <p className="mt-2 text-sm text-slate-500">Nadie en espera para este día y veterinario.</p>
                 ) : (
                   <div className="mt-3 space-y-2">
                     {listaEspera.slice(0, 20).map((e) => (
@@ -760,7 +673,7 @@ function addDaysISO(iso: string, deltaDays: number): string {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-semibold text-slate-900 truncate">
+                              <div className="truncate text-sm font-semibold text-slate-900">
                                 {nombresMascotasDesdeCitasDia.get(e.mascota_id) ?? `Mascota #${e.mascota_id}`}
                               </div>
                               {e.urgente ? (
@@ -773,17 +686,15 @@ function addDaysISO(iso: string, deltaDays: number): string {
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-slate-600">
-                              Slot: {slotLabelFromISO(e.fecha)}
-                            </div>
+                            <div className="text-xs text-slate-600">Prioridad de slot en agenda</div>
                             <div className="text-[11px] text-slate-500">
                               En espera: {waitMinutesFrom(e.created_at)} min
                             </div>
                             {e.motivo ? (
-                              <div className="text-xs text-slate-500 truncate">{e.motivo}</div>
+                              <div className="truncate text-xs text-slate-500">{e.motivo}</div>
                             ) : null}
                           </div>
-                          <div className="shrink-0 flex flex-col items-end gap-1">
+                          <div className="flex shrink-0 flex-col items-end gap-1">
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
                                 e.procesada
@@ -847,103 +758,11 @@ function addDaysISO(iso: string, deltaDays: number): string {
                     ))}
                   </div>
                 )}
-                </div>
-              </details>
-            </div>
-          ) : (
-            data && (
-              <>
-                <Table>
-                <TableHead>
-                    <TableRow>
-                    <TableTh>Fecha</TableTh>
-                    <TableTh>Mascota</TableTh>
-                    <TableTh>Asignada a</TableTh>
-                    <TableTh>Servicio</TableTh>
-                    <TableTh>Estado</TableTh>
-                    <TableTh className="text-right">Acción</TableTh>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.items.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableTd className="text-sm whitespace-nowrap">
-                        {formatDateTime(c.fecha)}
-                      </TableTd>
-                      <TableTd>
-                        <Link
-                          to={`/mascotas/${c.mascota_id}`}
-                          state={{ from: '/citas' }}
-                          className="text-primary-600 hover:underline"
-                        >
-                          {c.mascota_nombre ?? `Mascota #${c.mascota_id}`}
-                        </Link>
-                      </TableTd>
-                      <TableTd className="text-sm text-gray-600">
-                        {c.veterinario_nombre?.trim()
-                          ? c.veterinario_nombre
-                          : c.veterinario_id != null
-                            ? `Vet #${c.veterinario_id}`
-                            : '—'}
-                      </TableTd>
-                      <TableTd className="max-w-[200px] truncate">
-                        {c.motivo ?? '—'}
-                      </TableTd>
-                      <TableTd>
-                        <div className="flex flex-col gap-1">
-                          {(() => {
-                            const st = estadoCitaBadgeMeta(c.estado)
-                            return (
-                              <span
-                                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${st.className}`}
-                              >
-                                {st.label}
-                              </span>
-                            )
-                          })()}
-                          {c.urgente ? (
-                            <span className="inline-flex items-center rounded-full border border-red-300 bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-800">
-                              Urgente
-                            </span>
-                          ) : null}
-                          {c.en_sala_espera ? (
-                            <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-800">
-                              En sala de espera
-                            </span>
-                          ) : null}
-                        </div>
-                      </TableTd>
-                      <TableTd className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {puedeReprogramar && c.estado === 'pendiente' ? (
-                            <Button
-                              variant="secondary"
-                              disabled={checkInMutation.isPending}
-                              onClick={() => checkInMutation.mutate(c.id)}
-                            >
-                              Check-in
-                            </Button>
-                          ) : null}
-                          <Link to={`/citas/${c.id}`} state={{ from: '/citas' }}>
-                            <Button variant="ghost">{isVet ? 'Ver' : 'Ver / Editar'}</Button>
-                          </Link>
-                        </div>
-                      </TableTd>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <Pagination
-                page={data.page}
-                pageSize={data.page_size}
-                total={data.total}
-                onPageChange={setPage}
-              />
-              </>
-            )
+              </div>
+            </details>
           )}
         </div>
-      </Card>
+      </DataListPanel>
     </div>
   )
 }

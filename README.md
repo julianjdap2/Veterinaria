@@ -1,8 +1,12 @@
 # Veterinaria
-Proyecto Veterinaria
+Proyecto Veterinaria (API FastAPI + frontend React/Vite, multi-tenant por empresa).
 
-- **Backend (API):** ver [backend/README.md](backend/README.md) – arranque, variables de entorno, endpoints.
-- **Frontend:** antes de empezar el front, ver [FRONTEND.md](FRONTEND.md) – auth, errores, paginación y recomendaciones.
+- **Backend (API):** [backend/README.md](backend/README.md) – arranque, `.env` (plantilla `backend/.env.example`), migraciones, endpoints, cron.
+- **Frontend:** [frontend/README.md](frontend/README.md) – instalación, estructura, build.
+- **Contrato API:** [docs/API.md](docs/API.md) · guía corta [FRONTEND.md](FRONTEND.md).
+- **Índice de documentación** (checklists, planes, flujos): [docs/README.md](docs/README.md).
+- **UI del panel (componentes y convenciones):** [frontend/docs/UI-PANEL.md](frontend/docs/UI-PANEL.md).
+- **Arquitectura del frontend:** [frontend/docs/ARCHITECTURE.md](frontend/docs/ARCHITECTURE.md).
 - **Checklist de producto:** [docs/CHECKLIST_PRODUCTO.md](docs/CHECKLIST_PRODUCTO.md).
 - **Planes y límites (SaaS):** [docs/PLANES_Y_LIMITES.md](docs/PLANES_Y_LIMITES.md).
 - **Roadmap módulos y parametrización:** [docs/ROADMAP_MODULOS_Y_PARAMETROS.md](docs/ROADMAP_MODULOS_Y_PARAMETROS.md).

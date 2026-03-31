@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
-from app.models.mascota import Mascota
 from app.models.consulta import Consulta
 from app.models.formula_item import FormulaItem
 from app.repositories.formula_repository import listar_por_cita
@@ -11,7 +10,9 @@ from app.repositories.consulta_repository import (
     crear_consulta,
     listar_consultas_por_mascota,
     obtener_consulta_por_id,
+    actualizar_consulta_campos,
 )
+from app.repositories.mascota_repository import obtener_mascota_por_empresa
 from app.repositories.cita_repository import actualizar_cita
 from app.repositories.formula_repository import copy_cita_formula_to_consulta
 from app.services.notification_service import notify_consulta_creada
@@ -23,16 +24,7 @@ def crear_consulta_service(
     veterinario_id: int,
     empresa_id: int,
 ):
-    mascota = (
-        db.query(Mascota)
-        .filter(
-            Mascota.id == datos["mascota_id"],
-            Mascota.empresa_id == empresa_id,
-            Mascota.activo.is_(True),
-        )
-        .first()
-    )
-
+    mascota = obtener_mascota_por_empresa(db, datos["mascota_id"], empresa_id, incluir_inactivas=False)
     if not mascota:
         raise ApiError(
             code="mascota_not_found",
@@ -43,6 +35,7 @@ def crear_consulta_service(
     datos_creacion = {
         **datos,
         "veterinario_id": veterinario_id,
+        "empresa_id": empresa_id,
     }
 
     consulta = crear_consulta(db, datos_creacion)
@@ -90,16 +83,7 @@ def crear_consulta_con_formula_service(
     Si se crea desde una cita (cita_id), valida transiciones y marca la cita como 'atendida'
     cuando todo queda guardado.
     """
-    mascota = (
-        db.query(Mascota)
-        .filter(
-            Mascota.id == datos["mascota_id"],
-            Mascota.empresa_id == empresa_id,
-            Mascota.activo.is_(True),
-        )
-        .first()
-    )
-
+    mascota = obtener_mascota_por_empresa(db, datos["mascota_id"], empresa_id, incluir_inactivas=False)
     if not mascota:
         raise ApiError(
             code="mascota_not_found",
@@ -130,6 +114,7 @@ def crear_consulta_con_formula_service(
     datos_creacion = {
         **datos,
         "veterinario_id": veterinario_id,
+        "empresa_id": empresa_id,
     }
 
     consulta = Consulta(**datos_creacion)
@@ -216,4 +201,14 @@ def obtener_consulta_detalle(
             status_code=404,
         )
     return consulta
+
+
+def actualizar_consulta_parcial_service(
+    db: Session,
+    consulta_id: int,
+    empresa_id: int,
+    campos: dict,
+):
+    consulta = obtener_consulta_detalle(db=db, consulta_id=consulta_id, empresa_id=empresa_id)
+    return actualizar_consulta_campos(db, consulta, campos)
 

@@ -3,7 +3,13 @@
  */
 
 import apiClient from '../../api/client'
-import type { Cliente, ClienteCreate, ClienteUpdate } from '../../api/types'
+import type {
+  Cliente,
+  ClienteCreate,
+  ClienteIdentidadBusqueda,
+  ClienteUpdate,
+  VinculacionResponse,
+} from '../../api/types'
 import type { PaginatedResponse, PaginationParams } from '../../core/types'
 
 export interface ClientesFilters extends PaginationParams {
@@ -45,4 +51,31 @@ export async function updateCliente(id: number, payload: ClienteUpdate): Promise
 
 export async function deleteCliente(id: number): Promise<void> {
   await apiClient.delete(`/clientes/${id}`)
+}
+
+export async function fetchClienteIdentidad(documento: string): Promise<ClienteIdentidadBusqueda> {
+  const { data } = await apiClient.get<ClienteIdentidadBusqueda>('/clientes/buscar-identidad', {
+    params: { documento: documento.trim() },
+  })
+  return data
+}
+
+export async function vincularPresencial(payload: {
+  cliente_id: number
+  documento: string
+  telefono: string
+  confirmo_consentimiento: boolean
+  marketing_canal?: string | null
+}): Promise<VinculacionResponse> {
+  const { data } = await apiClient.post<VinculacionResponse>('/clientes/vinculos/presencial', payload)
+  return data
+}
+
+export async function vincularParcial(payload: {
+  cliente_id: number
+  documento: string
+  marketing_canal?: string | null
+}): Promise<VinculacionResponse> {
+  const { data } = await apiClient.post<VinculacionResponse>('/clientes/vinculos/parcial', payload)
+  return data
 }

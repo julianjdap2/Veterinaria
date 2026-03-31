@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.formula_schema import FormulaItemCreate
+from app.schemas.extras_clinicos_schema import ConsultaExtrasClinicos
 
 
 class ConsultaBase(BaseModel):
@@ -13,6 +14,7 @@ class ConsultaBase(BaseModel):
     observaciones: Optional[str] = None
     fecha_consulta: Optional[datetime] = None
     cita_id: Optional[int] = None
+    extras_clinicos: Optional[ConsultaExtrasClinicos] = None
 
 
 class ConsultaCreate(ConsultaBase):
@@ -21,6 +23,14 @@ class ConsultaCreate(ConsultaBase):
 
 class ConsultaCreateConFormula(ConsultaCreate):
     formula_items: list[FormulaItemCreate] = []
+
+
+class ConsultaUpdate(BaseModel):
+    """Actualización parcial tras crear la consulta (p. ej. fórmula médica)."""
+
+    diagnostico: Optional[str] = None
+    observaciones: Optional[str] = None
+    fecha_consulta: Optional[datetime] = None
 
 
 class ConsultaResponse(ConsultaBase):
@@ -46,6 +56,7 @@ class ResumenConsultaResponse(BaseModel):
     tratamiento: str
     notas_cita: str
     observaciones: str
+    extras_clinicos_texto: str = ""
 
 
 class EnviarResumenBody(BaseModel):

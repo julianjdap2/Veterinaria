@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import ApiError
 from app.repositories.consulta_repository import obtener_consulta_por_id
 from app.repositories.formula_repository import listar_por_consulta
+from app.services.variables_clinicas_service import extras_consulta_a_texto
 
 
 def _safe(s: str | None) -> str:
@@ -97,6 +98,9 @@ def get_resumen_consulta(
         "tratamiento": _safe(consulta.tratamiento),
         "notas_cita": _safe(getattr(cita, "notas", None)),
         "observaciones": _safe(consulta.observaciones),
+        "extras_clinicos_texto": _safe(
+            extras_consulta_a_texto(db, empresa_id, getattr(consulta, "extras_clinicos_json", None))
+        ),
         "formula": formula,
         "mostrar_precio": mostrar_precio,
     }
@@ -114,6 +118,9 @@ def resumen_consulta_como_texto(resumen: dict[str, Any]) -> str:
         "",
         "Motivo de consulta:",
         resumen.get("motivo_consulta", "—"),
+        "",
+        "Variables clínicas:",
+        resumen.get("extras_clinicos_texto") or "—",
         "",
         "Diagnóstico:",
         resumen.get("diagnostico", "—"),
@@ -198,6 +205,7 @@ def generar_pdf_resumen(resumen: dict[str, Any]) -> bytes:
 
     for label, key in [
         ("Motivo de consulta", "motivo_consulta"),
+        ("Variables clínicas", "extras_clinicos_texto"),
         ("Diagnóstico", "diagnostico"),
         ("Tratamiento", "tratamiento"),
         ("Notas de la cita", "notas_cita"),

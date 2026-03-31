@@ -20,11 +20,12 @@ def login_user(db: Session, email: str, password: str):
     if not verify_password(password, user.password_hash):
         return None
 
+    # empresa_id/rol_id en el JWT son informativos para el cliente; la API autoriza solo con user_id → usuario en BD.
     token = create_access_token(
         {
             "user_id": user.id,
             "empresa_id": user.empresa_id,
-            "rol_id": user.rol_id
+            "rol_id": user.rol_id,
         }
     )
 

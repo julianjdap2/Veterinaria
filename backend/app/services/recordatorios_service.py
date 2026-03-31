@@ -17,6 +17,7 @@ from app.models.cita import Cita
 from app.models.empresa import Empresa
 from app.models.empresa_configuracion import EmpresaConfiguracion
 from app.models.mascota import Mascota
+from app.models.usuario import Usuario
 from app.models.notification_log import NotificationLog
 from app.services.notificaciones_config_service import notificaciones_dict_for_empresa
 from app.services.notification_service import (
@@ -198,6 +199,7 @@ def enviar_recordatorios_citas_manana(db: Session, fecha_objetivo: date | None =
         .options(
             joinedload(Cita.mascota).joinedload(Mascota.cliente),
             joinedload(Cita.mascota).joinedload(Mascota.empresa).joinedload(Empresa.plan),
+            joinedload(Cita.veterinario),
         )
         .filter(or_(Cita.estado.is_(None), Cita.estado != "cancelada"))
         .filter(Cita.fecha.isnot(None))
@@ -211,7 +213,14 @@ def enviar_recordatorios_citas_manana(db: Session, fecha_objetivo: date | None =
         mascota = cita.mascota
         if not mascota:
             continue
-        empresa_id = mascota.empresa_id
+        empresa_id = getattr(cita, "empresa_id", None)
+        if empresa_id is None:
+            vet = cita.veterinario
+            if vet is None and cita.veterinario_id:
+                vet = db.query(Usuario).filter(Usuario.id == cita.veterinario_id).first()
+            empresa_id = vet.empresa_id if vet else mascota.empresa_id
+        if empresa_id is None:
+            continue
         ecfg = (
             db.query(EmpresaConfiguracion)
             .filter(EmpresaConfiguracion.empresa_id == empresa_id)

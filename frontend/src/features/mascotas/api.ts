@@ -3,7 +3,7 @@
  */
 
 import apiClient from '../../api/client'
-import type { Mascota, MascotaCreate } from '../../api/types'
+import type { Mascota, MascotaCreate, MascotaUpdate } from '../../api/types'
 import type { PaginatedResponse, PaginationParams } from '../../core/types'
 
 export interface MascotasFilters extends PaginationParams {
@@ -35,6 +35,11 @@ export async function createMascota(payload: MascotaCreate): Promise<Mascota> {
 
 export async function updateMascotaActivo(id: number, activo: boolean): Promise<Mascota> {
   const { data } = await apiClient.patch<Mascota>(`/mascotas/${id}`, { activo })
+  return data
+}
+
+export async function updateMascota(id: number, payload: MascotaUpdate): Promise<Mascota> {
+  const { data } = await apiClient.patch<Mascota>(`/mascotas/${id}`, payload)
   return data
 }
 

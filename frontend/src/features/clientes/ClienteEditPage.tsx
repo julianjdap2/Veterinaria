@@ -6,6 +6,7 @@ import { updateCliente } from './api'
 import { clientesKeys } from './hooks/useClientes'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
@@ -85,13 +86,21 @@ export function ClienteEditPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link to={`/clientes/${numId}`} className="text-primary-600 hover:underline text-sm">
-          ← Volver al cliente
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-slate-900">Editar cliente</h1>
+    <div className="mx-auto max-w-3xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[
+          { label: 'Clientes', to: '/clientes' },
+          { label: cliente.nombre, to: `/clientes/${numId}` },
+          { label: 'Editar' },
+        ]}
+        title="Editar cliente"
+        subtitle="Actualiza datos de contacto del tutor."
+        actions={
+          <Link to={`/clientes/${numId}`} className="text-sm font-medium text-primary-600 hover:text-primary-800">
+            ← Volver a la ficha
+          </Link>
+        }
+      />
       <Card title="Datos del cliente">
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-4">
           {error && (

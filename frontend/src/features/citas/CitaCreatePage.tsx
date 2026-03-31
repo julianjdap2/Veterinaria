@@ -7,20 +7,17 @@ import { useClientes } from '../clientes/hooks/useClientes'
 import { useMascotas } from '../mascotas/hooks/useMascotas'
 import { useVeterinarios } from '../usuarios/hooks/useUsuarios'
 import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
-import {
-  createCita,
-  createCitaLlegada,
-  createCitasRecurrentes,
-  fetchCitasDisponibilidad,
-} from './api'
+import { createCita, createCitaLlegada, fetchCitasDisponibilidad } from './api'
 import { citasKeys } from './hooks/useCitasAgenda'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
 import { useConfigOperativa } from '../empresa/hooks/useConfigOperativa'
+import { useVariablesClinicas } from '../empresa/hooks/useVariablesClinicas'
 import { duracionTipoServicio, flagsTipoServicio } from './tipoServicio'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -42,6 +39,7 @@ export function CitaCreatePage() {
   const [clienteSearch, setClienteSearch] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<{ id: number; nombre: string } | null>(null)
   const [showClientResults, setShowClientResults] = useState(false)
+  const [soloReservarEspacio, setSoloReservarEspacio] = useState(false)
   const [mascotaId, setMascotaId] = useState('')
   const state = location.state as { fecha?: string; veterinarioId?: number } | null
   const preFecha = state?.fecha ? String(state.fecha) : ''
@@ -53,17 +51,20 @@ export function CitaCreatePage() {
   const [hora, setHora] = useState(preHora)
   const [tipoServicio, setTipoServicio] = useState<string>('consulta')
   const [veterinarioId, setVeterinarioId] = useState('')
+  const [encargadosIds, setEncargadosIds] = useState<string[]>([])
   const [notas, setNotas] = useState('')
+  const [vacunaId, setVacunaId] = useState('')
+  const [hospitalizacionId, setHospitalizacionId] = useState('')
+  const [procedimientoId, setProcedimientoId] = useState('')
   const [urgente, setUrgente] = useState(false)
-  const [recurrente, setRecurrente] = useState(false)
-  const [repeticiones, setRepeticiones] = useState(2)
-  const [intervaloSemana, setIntervaloSemana] = useState(1)
+  const [sinHoraDefinida, setSinHoraDefinida] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const clientSearchRef = useRef<HTMLDivElement>(null)
 
   const user = useAuthStore((s) => s.user)
   const isVet = user?.rolId === ROLES.VETERINARIO
   const { data: configOp } = useConfigOperativa({ enabled: !isVet })
+  const { data: variablesClinicas } = useVariablesClinicas()
   const tipos = configOp?.tipos_servicio
 
   useEffect(() => {
@@ -73,17 +74,20 @@ export function CitaCreatePage() {
     }
   }, [tipos, tipoServicio])
 
-  const { allowUrgente, allowRecurrente } = flagsTipoServicio(tipoServicio, tipos)
+  const { allowUrgente } = flagsTipoServicio(tipoServicio, tipos)
 
   useEffect(() => {
     if (!allowUrgente) setUrgente(false)
-    if (!allowRecurrente) setRecurrente(false)
-  }, [allowUrgente, allowRecurrente])
+  }, [allowUrgente])
 
   if (isVet) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-900">Nueva cita</h1>
+      <div className="mx-auto max-w-3xl space-y-6 pb-8">
+        <PageHeader
+          breadcrumbs={[{ label: 'Citas', to: '/citas' }, { label: 'Nueva' }]}
+          title="Nueva cita"
+          subtitle="Los veterinarios no registran turnos desde esta pantalla."
+        />
         <Card title="Acceso restringido">
           <p className="text-sm text-gray-700">
             Como veterinario no puedes crear citas. Pide a recepción/administración que registre el turno.
@@ -109,7 +113,10 @@ export function CitaCreatePage() {
 
   const puedeAsignarVet = user?.rolId === ROLES.ADMIN || user?.rolId === ROLES.RECEPCION
   const { data: veterinarios = [] } = useVeterinarios({ enabled: puedeAsignarVet })
-
+  useEffect(() => {
+    if (!veterinarioId) return
+    setEncargadosIds((prev) => (prev.includes(veterinarioId) ? prev : [...prev, veterinarioId]))
+  }, [veterinarioId])
   const debouncedSearch = useDebouncedValue(clienteSearch.trim(), SEARCH_DEBOUNCE_MS)
   const clientFilters = clientSearchFilters(debouncedSearch)
   const hasSearchTerm = debouncedSearch.length >= MIN_SEARCH_LENGTH
@@ -203,27 +210,6 @@ export function CitaCreatePage() {
     },
   })
 
-  const mutationRecurrente = useMutation({
-    mutationFn: createCitasRecurrentes,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: citasKeys().agenda({ page: 1, page_size: 20 }) })
-      queryClient.invalidateQueries({ queryKey: ['citas', 'disponibilidad'] })
-      toast.success(
-        `Citas recurrentes creadas: ${data.created_ids.length}. Fallidas: ${data.skipped.length}. En espera: ${data.waitlist_ids.length}.`,
-      )
-      if (data.created_ids.length) {
-        navigate(`/citas/${data.created_ids[0]}`)
-      } else {
-        navigate('/citas')
-      }
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : 'Error al crear citas recurrentes.'
-      setError(msg)
-      toast.error(msg)
-    },
-  })
-
   const mutationLlegada = useMutation({
     mutationFn: createCitaLlegada,
     onSuccess: (data) => {
@@ -251,87 +237,107 @@ export function CitaCreatePage() {
     e.preventDefault()
     setError(null)
     const mId = parseInt(mascotaId, 10)
-    if (!mascotaId || Number.isNaN(mId)) {
+    if (!soloReservarEspacio && (!mascotaId || Number.isNaN(mId))) {
       setError('Selecciona una mascota.')
       toast.warning('Selecciona una mascota.')
       return
     }
     const motivoFinal = tipoServicio || undefined
     if (!fechaDia || !hora) {
-      setError('Selecciona fecha y hora.')
-      toast.warning('Selecciona fecha y hora.')
+      if (!sinHoraDefinida) {
+        setError('Selecciona fecha y hora.')
+        toast.warning('Selecciona fecha y hora.')
+        return
+      }
+    }
+    const horaInicio = sinHoraDefinida ? '00:00' : hora
+    const fechaInicio = `${fechaDia}T${horaInicio}:00`
+    const fechaFin = sinHoraDefinida ? `${fechaDia}T23:59:00` : `${fechaDia}T${hora}:00`
+    const encargados = encargadosIds.map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
+    if (!slotDisponible) {
+      if (soloReservarEspacio) {
+        setError('Ese horario ya está reservado para este veterinario.')
+        toast.warning('Selecciona un horario libre para bloquear espacio.')
+        return
+      }
+      mutationLlegada.mutate({
+        mascota_id: soloReservarEspacio ? 0 : mId,
+        motivo: motivoFinal,
+        notas: notas.trim() || undefined,
+        urgente,
+        veterinario_preferido_id: effectiveVeterinarioId ?? null,
+        encargados_ids: encargados,
+        extras_clinicos: {
+          vacuna_id: vacunaId || undefined,
+          hospitalizacion_id: hospitalizacionId || undefined,
+          procedimiento_id: procedimientoId || undefined,
+        },
+      })
       return
     }
 
-    const fechaInicio = `${fechaDia}T${hora}:00`
-    if (recurrente && repeticiones > 1) {
-      if (effectiveVeterinarioId == null) {
-        setError('Selecciona un veterinario.')
-        toast.warning('Selecciona un veterinario.')
-        return
-      }
-      if (!slotDisponible) {
-        setError('Para recurrentes debes usar un horario disponible.')
-        toast.warning('Para recurrentes debes usar un horario disponible.')
-        return
-      }
-      mutationRecurrente.mutate({
-        mascota_id: mId,
-        fecha_inicio: fechaInicio,
-        veterinario_id: effectiveVeterinarioId as number,
-        motivo: motivoFinal,
-        notas: notas.trim() || undefined,
-        urgente,
-        repeticiones,
-        intervalo_semana: intervaloSemana,
-        crear_waitlist_en_conflicto: true,
-      })
-    } else {
-      if (!slotDisponible) {
-        mutationLlegada.mutate({
-          mascota_id: mId,
-          motivo: motivoFinal,
-          notas: notas.trim() || undefined,
-          urgente,
-          veterinario_preferido_id: effectiveVeterinarioId ?? null,
-        })
-        return
-      }
-
-      mutation.mutate({
-        mascota_id: mId,
-        fecha: fechaInicio,
-        motivo: motivoFinal,
-        // El estado inicial SIEMPRE es 'pendiente' (controlado por backend/state machine).
-        estado: 'pendiente',
-        veterinario_id: effectiveVeterinarioId,
-        notas: notas.trim() || undefined,
-        urgente,
-      })
-    }
+    mutation.mutate({
+      mascota_id: soloReservarEspacio ? undefined : mId,
+      fecha: fechaInicio,
+      fecha_fin: fechaFin,
+      motivo: motivoFinal,
+      estado: 'pendiente',
+      veterinario_id: effectiveVeterinarioId,
+      notas: notas.trim() || undefined,
+      urgente,
+      sin_hora_definida: sinHoraDefinida,
+      encargados_ids: encargados,
+      extras_clinicos: {
+        vacuna_id: vacunaId || undefined,
+        hospitalizacion_id: hospitalizacionId || undefined,
+        procedimiento_id: procedimientoId || undefined,
+      },
+      solo_reservar_espacio: soloReservarEspacio,
+    })
   }
 
   function handleAtencionLlegada() {
+    if (soloReservarEspacio) {
+      setError('La opción de orden de llegada no aplica para reservas de espacio.')
+      toast.warning('Desactiva "Solo reservar el espacio" para usar orden de llegada.')
+      return
+    }
     setError(null)
     const mId = parseInt(mascotaId, 10)
-    if (!mascotaId || Number.isNaN(mId)) {
+    if (!soloReservarEspacio && (!mascotaId || Number.isNaN(mId))) {
       setError('Selecciona una mascota.')
       toast.warning('Selecciona una mascota.')
       return
     }
     const motivoFinal = tipoServicio || undefined
+    const encargados = encargadosIds.map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
     mutationLlegada.mutate({
-      mascota_id: mId,
+      mascota_id: soloReservarEspacio ? 0 : mId,
       motivo: motivoFinal,
       notas: notas.trim() || undefined,
       urgente,
+      encargados_ids: encargados,
       veterinario_preferido_id: effectiveVeterinarioId ?? null,
+      extras_clinicos: {
+        vacuna_id: vacunaId || undefined,
+        hospitalizacion_id: hospitalizacionId || undefined,
+        procedimiento_id: procedimientoId || undefined,
+      },
     })
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Nueva cita</h1>
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Citas', to: '/citas' }, { label: 'Nueva' }]}
+        title="Nueva cita"
+        subtitle="Cliente, mascota, fecha, tipo de servicio y notas."
+        actions={
+          <Link to="/citas" className="text-sm font-medium text-primary-600 hover:text-primary-800">
+            ← Volver a agenda
+          </Link>
+        }
+      />
       <Card title="Datos de la cita">
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-4">
           {error && (
@@ -340,7 +346,38 @@ export function CitaCreatePage() {
             </Alert>
           )}
 
+          <label
+            htmlFor="solo-reservar-espacio"
+            className={`group flex items-center justify-between rounded-2xl border px-4 py-3 transition ${
+              soloReservarEspacio ? 'border-primary-300 bg-primary-50/80 ring-1 ring-primary-200' : 'border-slate-200 bg-white/70'
+            }`}
+          >
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Solo reservar el espacio</p>
+              <p className="text-xs text-slate-500">Bloquea agenda sin propietario ni mascota.</p>
+            </div>
+            <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${soloReservarEspacio ? 'bg-primary-500' : 'bg-slate-300'}`}>
+              <input
+                id="solo-reservar-espacio"
+                type="checkbox"
+                checked={soloReservarEspacio}
+                onChange={(e) => {
+                  setSoloReservarEspacio(e.target.checked)
+                  if (e.target.checked) {
+                    setSelectedCliente(null)
+                    setClienteSearch('')
+                    setMascotaId('')
+                  }
+                }}
+                disabled={mutation.isPending || mutationLlegada.isPending}
+                className="sr-only"
+              />
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${soloReservarEspacio ? 'translate-x-6' : 'translate-x-1'}`} />
+            </span>
+          </label>
+
           {/* Paso 1: Cliente */}
+          {!soloReservarEspacio ? (
           <div ref={clientSearchRef}>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Cliente <span className="text-red-500">*</span>
@@ -403,6 +440,7 @@ export function CitaCreatePage() {
               </>
             )}
           </div>
+          ) : null}
 
           {/* Paso 2: Mascota (solo si hay cliente) */}
           {selectedCliente && (
@@ -457,6 +495,31 @@ export function CitaCreatePage() {
               </select>
             </div>
           )}
+          {puedeAsignarVet && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Encargados (múltiple)</label>
+              <select
+                multiple
+                value={encargadosIds}
+                onChange={(e) =>
+                  setEncargadosIds(
+                    Array.from(e.target.selectedOptions)
+                      .map((o) => o.value)
+                      .filter(Boolean),
+                  )
+                }
+                disabled={mutation.isPending || mutationLlegada.isPending}
+                className="h-28 w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                {veterinarios.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nombre}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">Ctrl/Cmd + click para seleccionar varios.</p>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
               type="date"
@@ -472,8 +535,8 @@ export function CitaCreatePage() {
                 value={hora}
                 onChange={(e) => setHora(e.target.value)}
                 disabled={
+                  sinHoraDefinida ||
                   mutation.isPending ||
-                  mutationRecurrente.isPending ||
                   loadingDisponibilidad ||
                   effectiveVeterinarioId == null
                 }
@@ -501,6 +564,38 @@ export function CitaCreatePage() {
               ) : null}
             </div>
           </div>
+          <label
+            htmlFor="cita-sin-hora-definida"
+            className={`group flex items-center justify-between rounded-2xl border px-4 py-3 transition ${
+              sinHoraDefinida
+                ? 'border-amber-300 bg-amber-50/80 ring-1 ring-amber-200'
+                : 'border-slate-200 bg-white/70 hover:border-slate-300'
+            }`}
+          >
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Sin hora definida</p>
+              <p className="text-xs text-slate-500">Reserva el día completo sin bloquear un slot puntual.</p>
+            </div>
+            <span
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                sinHoraDefinida ? 'bg-amber-500' : 'bg-slate-300'
+              }`}
+            >
+              <input
+                id="cita-sin-hora-definida"
+                type="checkbox"
+                checked={sinHoraDefinida}
+                onChange={(e) => setSinHoraDefinida(e.target.checked)}
+                disabled={mutation.isPending || mutationLlegada.isPending}
+                className="sr-only"
+              />
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+                  sinHoraDefinida ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </span>
+          </label>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo de servicio</label>
             <select
@@ -519,6 +614,56 @@ export function CitaCreatePage() {
               Tiempo estimado: {duracionTipoServicio(tipoServicio, tipos)}
             </p>
           </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Vacuna (opcional)</label>
+              <select
+                value={vacunaId}
+                onChange={(e) => setVacunaId(e.target.value)}
+                disabled={mutation.isPending}
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                <option value="">No aplica</option>
+                {(variablesClinicas?.vacunas ?? []).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Hospitalización (opcional)</label>
+              <select
+                value={hospitalizacionId}
+                onChange={(e) => setHospitalizacionId(e.target.value)}
+                disabled={mutation.isPending}
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                <option value="">No aplica</option>
+                {(variablesClinicas?.hospitalizacion ?? []).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Procedimiento (opcional)</label>
+              <select
+                value={procedimientoId}
+                onChange={(e) => setProcedimientoId(e.target.value)}
+                disabled={mutation.isPending}
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                <option value="">No aplica</option>
+                {(variablesClinicas?.procedimientos ?? []).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Notas</label>
@@ -532,7 +677,7 @@ export function CitaCreatePage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
             <label
               htmlFor="cita-urgente"
               className={`group flex items-center justify-between rounded-2xl border px-4 py-3 transition ${
@@ -557,12 +702,7 @@ export function CitaCreatePage() {
                   type="checkbox"
                   checked={urgente}
                   onChange={(e) => setUrgente(e.target.checked)}
-                  disabled={
-                    !allowUrgente ||
-                    mutation.isPending ||
-                    mutationRecurrente.isPending ||
-                    mutationLlegada.isPending
-                  }
+                  disabled={!allowUrgente || mutation.isPending || mutationLlegada.isPending}
                   className="sr-only"
                 />
                 <span
@@ -572,110 +712,30 @@ export function CitaCreatePage() {
                 />
               </span>
             </label>
-
-            <label
-              htmlFor="cita-recurrente"
-              className={`group flex items-center justify-between rounded-2xl border px-4 py-3 transition ${
-                !allowRecurrente ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-              } ${
-                recurrente
-                  ? 'border-primary-300 bg-primary-50/80 ring-1 ring-primary-200'
-                  : 'border-slate-200 bg-white/70 hover:border-slate-300'
-              }`}
-            >
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Recurrente</p>
-                <p className="text-xs text-slate-500">Repite la cita en semanas.</p>
-              </div>
-              <span
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                  recurrente ? 'bg-primary-500' : 'bg-slate-300'
-                }`}
-              >
-                <input
-                  id="cita-recurrente"
-                  type="checkbox"
-                  checked={recurrente}
-                  onChange={(e) => setRecurrente(e.target.checked)}
-                  disabled={
-                    !allowRecurrente ||
-                    mutation.isPending ||
-                    mutationRecurrente.isPending ||
-                    mutationLlegada.isPending
-                  }
-                  className="sr-only"
-                />
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
-                    recurrente ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </span>
-            </label>
           </div>
 
-          {recurrente && (
-            <div className="rounded-2xl border border-primary-200/70 bg-primary-50/40 p-4 ring-1 ring-primary-100/80">
-              <div className="mb-3">
-                <p className="text-sm font-semibold text-slate-800">Configuración de recurrencia</p>
-                <p className="text-xs text-slate-500">Define cuántas citas crear y cada cuántas semanas.</p>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Repeticiones</label>
-                  <input
-                    type="number"
-                    value={repeticiones}
-                    min={2}
-                    max={50}
-                    onChange={(e) => setRepeticiones(parseInt(e.target.value || '2', 10))}
-                    disabled={mutation.isPending || mutationRecurrente.isPending || mutationLlegada.isPending}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-                  />
-                  <p className="mt-1 text-xs text-slate-500">Mín. 2, máx. 50.</p>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Cada (semanas)</label>
-                  <input
-                    type="number"
-                    value={intervaloSemana}
-                    min={1}
-                    max={12}
-                    onChange={(e) => setIntervaloSemana(parseInt(e.target.value || '1', 10))}
-                    disabled={mutation.isPending || mutationRecurrente.isPending || mutationLlegada.isPending}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
-                  />
-                  <p className="mt-1 text-xs text-slate-500">Mín. 1, máx. 12.</p>
-                </div>
-              </div>
-            </div>
-          )}
           <div className="flex gap-2 pt-1">
             <Button
               type="submit"
-                loading={mutation.isPending || mutationRecurrente.isPending || mutationLlegada.isPending}
+              loading={mutation.isPending || mutationLlegada.isPending}
               disabled={!selectedCliente || mascotas.length === 0}
             >
-              {recurrente && repeticiones > 1
-                ? 'Crear citas recurrentes'
-                : slotDisponible
-                  ? 'Crear cita'
-                    : 'Asignar por llegada'}
+              {slotDisponible ? 'Crear cita' : 'Asignar por llegada'}
             </Button>
             <Button
-                type="button"
-                variant="secondary"
-                onClick={handleAtencionLlegada}
-                loading={mutationLlegada.isPending}
-                disabled={!selectedCliente || mascotas.length === 0 || mutation.isPending || mutationRecurrente.isPending || mutationLlegada.isPending}
-              >
-                Atención por orden de llegada
-              </Button>
-              <Button
+              type="button"
+              variant="secondary"
+              onClick={handleAtencionLlegada}
+              loading={mutationLlegada.isPending}
+              disabled={!selectedCliente || mascotas.length === 0 || mutation.isPending || mutationLlegada.isPending}
+            >
+              Atención por orden de llegada
+            </Button>
+            <Button
               type="button"
               variant="secondary"
               onClick={() => navigate('/citas')}
-                disabled={mutation.isPending || mutationRecurrente.isPending || mutationLlegada.isPending}
+              disabled={mutation.isPending || mutationLlegada.isPending}
             >
               Cancelar
             </Button>

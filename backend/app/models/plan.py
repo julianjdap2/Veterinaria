@@ -40,6 +40,9 @@ class Plan(Base):
     feature_dashboard_avanzado = Column(Boolean, default=False)
     feature_exportaciones = Column(Boolean, default=True)
 
+    # Sugerencias / checklist en consultorio (reglas; futuro LLM opcional)
+    feature_ia_consultorio = Column(Boolean, default=False, nullable=False)
+
     soporte_nivel = Column(String(20), nullable=False, default="basico")  # basico, premium
 
     created_at = Column(

@@ -27,3 +27,11 @@ class TokenResponse(BaseModel):
 
     access_token: str = Field(description="Token JWT para Authorization: Bearer")
     token_type: str = Field(default="bearer", description="Tipo de token")
+
+
+class SessionMeResponse(BaseModel):
+    """Datos mínimos de la sesión para pantallas de onboarding (términos, etc.)."""
+
+    email: str
+    usuario_nombre: str
+    empresa_nombre: str

@@ -1,8 +1,10 @@
 """
 rate_limit.py
 
-Limitador de tasa por IP (slowapi). Se usa en endpoints públicos
-como login para mitigar fuerza bruta.
+Limitador de tasa por IP (slowapi). Uso típico:
+- Login: fuerza bruta.
+- Búsqueda por documento (identidad): enumeración de documentos.
+- Endpoints públicos: abuso de ancho de banda.
 """
 
 from slowapi import Limiter

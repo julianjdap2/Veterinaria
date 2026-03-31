@@ -63,5 +63,9 @@ class DashboardResumenResponse(BaseModel):
     consultas_totales_periodo: int
     top_motivos_consulta: list[DashboardTopTexto]
     top_tratamientos: list[DashboardTopTexto]
+    top_vacunas_consulta: list[DashboardTopTexto]
+    top_pruebas_laboratorio_consulta: list[DashboardTopTexto]
+    top_hospitalizacion_consulta: list[DashboardTopTexto]
+    top_procedimientos_cita: list[DashboardTopTexto]
     top_veterinarios_hoy: list[DashboardTopVeterinario]
     atendidas_ultimos_7_dias: list[DashboardSerieDia]

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
+import { SettingsPanel } from '../../shared/ui/SettingsPanel'
 import { Input } from '../../shared/ui/Input'
 import { Modal } from '../../shared/ui/Modal'
 import { Alert } from '../../shared/ui/Alert'
@@ -36,6 +38,7 @@ function emptyCreate(): SuperadminPlanCreate {
     feature_recordatorios_automaticos: true,
     feature_dashboard_avanzado: false,
     feature_exportaciones: true,
+    feature_ia_consultorio: false,
     soporte_nivel: 'basico',
   }
 }
@@ -169,6 +172,7 @@ export function SuperadminPlanesPage() {
       feature_recordatorios_automaticos: p.feature_recordatorios_automaticos,
       feature_dashboard_avanzado: p.feature_dashboard_avanzado,
       feature_exportaciones: p.feature_exportaciones,
+      feature_ia_consultorio: p.feature_ia_consultorio ?? false,
       soporte_nivel: p.soporte_nivel,
     })
   }
@@ -201,13 +205,17 @@ export function SuperadminPlanesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Planes de suscripción</h1>
-        <Button variant="secondary" onClick={() => setShowCreate((s) => !s)}>
-          {showCreate ? 'Ocultar nuevo plan' : 'Nuevo plan'}
-        </Button>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Superadmin' }, { label: 'Planes' }]}
+        title="Planes de suscripción"
+        subtitle="Catálogo de planes para asignar a clínicas (límites y módulos)."
+        actions={
+          <Button variant="secondary" onClick={() => setShowCreate((s) => !s)}>
+            {showCreate ? 'Ocultar nuevo plan' : 'Nuevo plan'}
+          </Button>
+        }
+      />
 
       {isError && (
         <Alert variant="error">
@@ -216,8 +224,7 @@ export function SuperadminPlanesPage() {
       )}
 
       {showCreate && (
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold text-slate-800">Crear plan</h2>
+        <SettingsPanel kicker="Alta" title="Crear plan" description="Define código único, precio y límites.">
           <PlanEditForm draft={createDraft} setDraft={setCreateDraft} />
           <div className="mt-4 flex gap-2">
             <Button onClick={submitCreate} loading={createMutation.isPending}>
@@ -227,17 +234,17 @@ export function SuperadminPlanesPage() {
               Limpiar
             </Button>
           </div>
-        </Card>
+        </SettingsPanel>
       )}
 
-      <Card>
+      <DataListPanel kicker="Catálogo" title="Planes registrados">
         {isLoading ? (
           <p className="text-sm text-slate-500">Cargando…</p>
         ) : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table plain>
               <TableHead>
-                <TableRow>
+                <TableRow header>
                   <TableTh>ID</TableTh>
                   <TableTh>Nombre</TableTh>
                   <TableTh>Código</TableTh>
@@ -262,6 +269,7 @@ export function SuperadminPlanesPage() {
                       <TableTd>{p.precio}</TableTd>
                       <TableTd className="text-xs text-slate-600">
                         u:{p.max_usuarios ?? '∞'} m:{p.max_mascotas ?? '∞'} c/m:{p.max_citas_mes ?? '∞'}
+                        {p.feature_ia_consultorio ? ' · asist.' : ''}
                       </TableTd>
                       <TableTd className="text-right">
                         <Button variant="secondary" className="text-xs" onClick={() => openEdit(p)}>
@@ -275,7 +283,7 @@ export function SuperadminPlanesPage() {
             </Table>
           </div>
         )}
-      </Card>
+      </DataListPanel>
 
       <Modal
         open={!!editing}

@@ -3,9 +3,37 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply antialiased text-slate-800 font-sans;
+  :root {
+    color-scheme: light;
   }
+  body {
+    @apply antialiased text-slate-800 font-sans bg-[#f5f7fb];
+  }
+  * {
+    @apply selection:bg-primary-100 selection:text-primary-900;
+  }
+}
+
+/* SaaS polish: transición suave global en elementos interactivos */
+button,
+a,
+input,
+select,
+textarea {
+  transition: all 180ms ease;
+}
+
+/* Tiptap editor */
+.ProseMirror {
+  min-height: 320px;
+  outline: none;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(148 163 184);
+  pointer-events: none;
+  height: 0;
 }
 
 /* Animación mascotas banner: cruzan de izquierda a derecha (fuera de @layer para que no se purgue) */
@@ -38,14 +66,98 @@
 }
 
 /* Fondo moderno con huellitas sutiles (patrón repetitivo) */
+/* Panel principal: mezcla azul (marca) + esmeralda/teal (planes / acento clínico) */
 .app-bg {
-  background-color: #f1f5f9; /* slate-100 */
+  background-color: #f3f6f9;
   background-image:
-    radial-gradient(800px 260px at 20% 0%, rgba(37, 99, 235, 0.18), transparent 55%),
-    radial-gradient(520px 220px at 85% 20%, rgba(6, 182, 212, 0.14), transparent 60%),
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='72'%20height='72'%20viewBox='0%200%2072%2072'%3E%3Cg%20fill='%232563eb'%20fill-opacity='0.22'%3E%3Cellipse%20cx='36'%20cy='52'%20rx='20'%20ry='14'/%3E%3Ccircle%20cx='26'%20cy='32'%20r='9'/%3E%3Ccircle%20cx='46'%20cy='32'%20r='9'/%3E%3Ccircle%20cx='18'%20cy='40'%20r='7'/%3E%3Ccircle%20cx='54'%20cy='40'%20r='7'/%3E%3C/g%3E%3C/svg%3E");
+    radial-gradient(ellipse 900px 340px at 50% -12%, rgba(16, 185, 129, 0.09), transparent 58%),
+    radial-gradient(ellipse 720px 280px at 100% 8%, rgba(6, 182, 212, 0.07), transparent 55%),
+    radial-gradient(ellipse 640px 260px at 0% 25%, rgba(59, 130, 246, 0.06), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(240, 253, 250, 0.45), rgba(245, 247, 251, 0.92));
+}
+
+/** Barra superior decorativa reutilizable (tarjetas / cabeceras de módulo) */
+.panel-accent-top {
+  height: 3px;
+  border-radius: 9999px 9999px 0 0;
+  background: linear-gradient(90deg, #059669 0%, #0d9488 45%, #0891b2 100%);
+}
+
+/* Variante con huellitas (opcional: landing / marketing) */
+.app-bg-branded {
+  background-color: #f1f5f9;
+  background-image:
+    radial-gradient(800px 260px at 20% 0%, rgba(37, 99, 235, 0.12), transparent 55%),
+    radial-gradient(520px 220px at 85% 20%, rgba(6, 182, 212, 0.1), transparent 60%),
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='72'%20height='72'%20viewBox='0%200%2072%2072'%3E%3Cg%20fill='%232563eb'%20fill-opacity='0.14'%3E%3Cellipse%20cx='36'%20cy='52'%20rx='20'%20ry='14'/%3E%3Ccircle%20cx='26'%20cy='32'%20r='9'/%3E%3Ccircle%20cx='46'%20cy='32'%20r='9'/%3E%3Ccircle%20cx='18'%20cy='40'%20r='7'/%3E%3Ccircle%20cx='54'%20cy='40'%20r='7'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: no-repeat, no-repeat, repeat;
   background-position: center, center, 0 0;
   background-size: auto, auto, 140px 140px;
+}
+
+/* Landing: carrusel infinito de logos (translate -50% = mitad del track duplicado) */
+@keyframes landing-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.landing-marquee-track {
+  animation: landing-marquee 50s linear infinite;
+  will-change: transform;
+}
+
+.landing-marquee:hover .landing-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-marquee-track {
+    animation: none !important;
+  }
+}
+
+.landing-trust-strip .landing-marquee {
+  mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+}
+
+/* Borde decorativo tipo huella (sutil) */
+.landing-paw-edge-top,
+.landing-paw-edge-bottom {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='64'%20height='16'%20viewBox='0%200%2064%2016'%3E%3Cg%20fill='%23d6d3d1'%20fill-opacity='0.9'%3E%3Cellipse%20cx='32'%20cy='12'%20rx='14'%20ry='4'/%3E%3Ccircle%20cx='24'%20cy='6'%20r='5'/%3E%3Ccircle%20cx='40'%20cy='6'%20r='5'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-size: 64px 16px;
+}
+
+.landing-paw-edge-bottom {
+  transform: rotate(180deg);
+}
+
+/* Fondo landing: alineado con panel (esmeralda / teal / cian suaves) */
+.landing-page-bg {
+  background-color: #fafaf9;
+  background-image:
+    radial-gradient(900px 380px at 12% -8%, rgba(16, 185, 129, 0.09), transparent 55%),
+    radial-gradient(720px 300px at 88% 5%, rgba(6, 182, 212, 0.08), transparent 55%),
+    radial-gradient(520px 220px at 50% 100%, rgba(245, 158, 11, 0.05), transparent 60%);
+}
+
+/* Registro / auth: patrón + velos esmeralda/teal (coherente con el panel) */
+.register-pattern-bg {
+  background-color: #f3f6f4;
+  background-image:
+    radial-gradient(ellipse 900px 420px at 8% -15%, rgba(16, 185, 129, 0.08), transparent 58%),
+    radial-gradient(ellipse 760px 340px at 92% 15%, rgba(6, 182, 212, 0.07), transparent 52%),
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='80'%20height='80'%20viewBox='0%200%2080%2080'%3E%3Cg%20fill='none'%20stroke='%23a7f3d0'%20stroke-width='0.55'%20opacity='0.45'%3E%3Ccircle%20cx='10'%20cy='10'%20r='3'/%3E%3Cpath%20d='M40%2010%20l6%2010%20-12%200%20z'/%3E%3Cpath%20d='M65%2020%20q5%208%200%2016'/%3E%3Crect%20x='25'%20y='45'%20width='8'%20height='8'%20rx='1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: auto, auto, 80px 80px;
+}
+
+/* Lista de sugerencias ciudad (Google / OSM): por encima de cards con sombra */
+.city-autocomplete-dropdown {
+  z-index: 9999;
 }
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card } from '../../shared/ui/Card'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
 import { Modal } from '../../shared/ui/Modal'
@@ -209,8 +210,12 @@ export function SuperadminEmpresasPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Superadmin - Empresas y permisos</h1>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Superadmin' }, { label: 'Empresas' }]}
+        title="Empresas y permisos"
+        subtitle="Selecciona una clínica para ajustar permisos de admin, perfiles y configuración."
+      />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Empresas">
           {isLoading ? (

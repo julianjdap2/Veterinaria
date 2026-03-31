@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAuditLogs } from './hooks/useAuditLogs'
 import { toast } from '../../core/toast-store'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
 import { Input } from '../../shared/ui/Input'
 import { Table, TableHead, TableBody, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
 import { Pagination } from '../../shared/ui/Pagination'
@@ -48,10 +49,14 @@ export function AuditPage() {
   const total = data?.total ?? 0
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Auditoría</h1>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Auditoría' }]}
+        title="Auditoría"
+        subtitle="Registro de cambios por tabla, usuario y rango de fechas (solo administradores)."
+      />
 
-      <Card title="Filtros" clip={false} contentClassName="p-4">
+      <DataListPanel kicker="Filtros" title="Búsqueda" description="Refina el listado; los resultados se paginan abajo.">
         <div className="flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
           <Input
             label="Tabla"
@@ -108,19 +113,19 @@ export function AuditPage() {
             Limpiar
           </Button>
         </div>
-      </Card>
+      </DataListPanel>
 
-      <Card title="Registros">
+      <DataListPanel kicker="Registros" title="Eventos" description="Acciones registradas en el sistema.">
         {isError ? (
           <p className="text-red-600">No se pudo cargar la auditoría. Solo administradores pueden acceder.</p>
         ) : isLoading ? (
-          <p className="text-gray-500">Cargando...</p>
+          <p className="text-slate-500">Cargando...</p>
         ) : (
           <div className="space-y-4">
-            <div className="overflow-x-auto">
-              <Table>
+            <div>
+              <Table plain>
                 <TableHead>
-                  <TableRow>
+                  <TableRow header>
                     <TableTh>ID</TableTh>
                     <TableTh>Fecha</TableTh>
                     <TableTh>Usuario ID</TableTh>
@@ -133,7 +138,7 @@ export function AuditPage() {
                 <TableBody>
                   {items.length === 0 ? (
                     <TableRow>
-                      <td colSpan={7} className="px-4 py-3 text-center text-sm text-gray-500">
+                      <td colSpan={7} className="px-4 py-3 text-center text-sm text-slate-500">
                         No hay registros con los filtros aplicados.
                       </td>
                     </TableRow>
@@ -146,7 +151,7 @@ export function AuditPage() {
                         <TableTd>{log.accion}</TableTd>
                         <TableTd>{log.tabla_afectada ?? '—'}</TableTd>
                         <TableTd>{log.registro_id ?? '—'}</TableTd>
-                        <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-900" title={log.descripcion ?? undefined}>
+                        <td className="max-w-xs truncate px-4 py-3 text-sm text-slate-900" title={log.descripcion ?? undefined}>
                           {log.descripcion ?? '—'}
                         </td>
                       </TableRow>
@@ -165,7 +170,7 @@ export function AuditPage() {
             )}
           </div>
         )}
-      </Card>
+      </DataListPanel>
     </div>
   )
 }

@@ -20,15 +20,16 @@ export function Card({
   return (
     <div
       className={`
-        rounded-2xl border border-slate-200/70 bg-white/90 backdrop-blur shadow-card
+        rounded-2xl border border-emerald-100/60 bg-white/95 backdrop-blur shadow-panel
         ${clip ? 'overflow-hidden' : 'overflow-visible'}
         transition-all duration-300 hover:shadow-card-hover
         ${className}
       `}
     >
+      <div className="panel-accent-top" aria-hidden />
       {(title || actions) && (
-        <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-primary-50/70 via-white to-white px-5 py-3.5">
-          {title && <h2 className="text-lg font-semibold text-slate-900">{title}</h2>}
+        <div className="flex items-center justify-between border-b border-emerald-100/50 bg-gradient-to-r from-emerald-50/50 via-white to-teal-50/40 px-5 py-3.5">
+          {title && <h2 className="text-lg font-semibold text-emerald-950">{title}</h2>}
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}

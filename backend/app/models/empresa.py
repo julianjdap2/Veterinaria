@@ -33,6 +33,13 @@ class Empresa(Base):
 
     direccion = Column(String(255))
 
+    ciudad = Column(String(120), nullable=True)
+    departamento = Column(String(120), nullable=True)
+    pais = Column(String(80), nullable=True)
+    tipo_establecimiento = Column(String(40), nullable=True)
+    registro_canal = Column(String(100), nullable=True)
+    registro_distribuidor = Column(String(150), nullable=True)
+
     plan_id = Column(Integer, ForeignKey("planes.id"))
 
     activa = Column(Boolean, default=True)
@@ -53,3 +60,5 @@ class Empresa(Base):
     clientes = relationship("Cliente", back_populates="empresa")
 
     mascotas = relationship("Mascota", back_populates="empresa")
+
+    cliente_vinculos = relationship("ClienteEmpresaVinculo", back_populates="empresa")

@@ -1,8 +1,6 @@
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
-from app.models.consulta import Consulta
-from app.models.mascota import Mascota
 from app.repositories.cita_repository import obtener_cita_por_id_y_empresa
 from app.repositories.consulta_repository import obtener_consulta_por_id
 from app.repositories.venta_repository import crear_venta as repo_crear_venta
@@ -13,12 +11,7 @@ from app.schemas.venta_schema import VentaDetalleAmpliadoResponse, VentaItemAmpl
 
 
 def _cliente_desde_consulta(db: Session, consulta_id: int, empresa_id: int) -> int | None:
-    consulta = (
-        db.query(Consulta)
-        .join(Mascota, Consulta.mascota_id == Mascota.id)
-        .filter(Consulta.id == consulta_id, Mascota.empresa_id == empresa_id)
-        .first()
-    )
+    consulta = obtener_consulta_por_id(db, consulta_id, empresa_id)
     if not consulta or not consulta.mascota:
         return None
     return getattr(consulta.mascota, "cliente_id", None)

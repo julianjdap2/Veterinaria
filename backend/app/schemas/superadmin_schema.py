@@ -65,6 +65,7 @@ class PlanResponse(BaseModel):
     feature_recordatorios_automaticos: bool
     feature_dashboard_avanzado: bool
     feature_exportaciones: bool
+    feature_ia_consultorio: bool = False
     soporte_nivel: str
 
     model_config = ConfigDict(from_attributes=True)
@@ -84,6 +85,7 @@ class PlanCreatePayload(BaseModel):
     feature_recordatorios_automaticos: bool = True
     feature_dashboard_avanzado: bool = False
     feature_exportaciones: bool = True
+    feature_ia_consultorio: bool = False
     soporte_nivel: str = "basico"
 
 
@@ -101,6 +103,7 @@ class PlanUpdatePayload(BaseModel):
     feature_recordatorios_automaticos: bool | None = None
     feature_dashboard_avanzado: bool | None = None
     feature_exportaciones: bool | None = None
+    feature_ia_consultorio: bool | None = None
     soporte_nivel: str | None = None
 
 

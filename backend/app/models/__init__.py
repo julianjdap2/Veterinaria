@@ -1,6 +1,8 @@
 from .rol import Rol
 from .usuario import Usuario
 from .cliente import Cliente
+from .cliente_empresa_vinculo import ClienteEmpresaVinculo
+from .cliente_vinculo_invitacion import ClienteVinculoInvitacion
 from .mascota import Mascota
 from .consulta import Consulta
 from .formula_item import FormulaItem
@@ -20,3 +22,4 @@ from .lista_espera import ListaEspera
 from .notification_log import NotificationLog
 from .empresa_admin_permiso import EmpresaAdminPermiso
 from .empresa_configuracion import EmpresaConfiguracion
+from .plan_salud import PlanAfiliacion, PlanAfiliacionUso, PlanSalud, PlanSaludCobertura

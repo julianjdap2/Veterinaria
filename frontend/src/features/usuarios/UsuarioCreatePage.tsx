@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useCreateUsuario, useMisPermisosAdmin } from './hooks/useUsuarios'
 import { fetchPerfilesAdminEmpresa } from './api'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
@@ -72,8 +73,17 @@ export function UsuarioCreatePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Nuevo usuario</h1>
+    <div className="mx-auto max-w-3xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Usuarios', to: '/usuarios' }, { label: 'Nuevo' }]}
+        title="Nuevo usuario"
+        subtitle="Cuenta en tu empresa: rol, email y contraseña inicial."
+        actions={
+          <Link to="/usuarios" className="text-sm font-medium text-primary-600 hover:text-primary-800">
+            ← Volver al listado
+          </Link>
+        }
+      />
       <Card title="Datos del usuario">
         <form onSubmit={handleSubmit} className="max-w-2xl space-y-4">
           {!loadingPermisos && permisosAdmin && !permisosAdmin.admin_gestion_usuarios ? (

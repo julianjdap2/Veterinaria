@@ -7,6 +7,7 @@ Contiene la lógica de negocio del módulo Mascotas.
 from sqlalchemy.orm import Session
 
 from app.repositories import mascota_repository
+from app.repositories import vinculo_repository
 from app.repositories.cliente_repository import obtener_cliente
 from app.core.errors import ApiError
 from app.services import plan_quotas
@@ -99,15 +100,61 @@ def actualizar_activo_mascota_service(
     activo: bool,
 ):
     """Actualiza el campo activo (reactivar o desactivar). 404 si no existe."""
-    if activo:
-        prev = mascota_repository.obtener_mascota_por_empresa(
-            db, mascota_id, empresa_id, incluir_inactivas=True
-        )
-        if prev and not prev.activo:
-            plan_quotas.verificar_limite_mascotas_activas(db, empresa_id)
+    prev = mascota_repository.obtener_mascota_por_empresa(
+        db, mascota_id, empresa_id, incluir_inactivas=True
+    )
+    if prev and prev.cliente_id:
+        vin = vinculo_repository.obtener_vinculo_activo(db, prev.cliente_id, empresa_id)
+        if vin and vin.access_level == vinculo_repository.ACCESS_PARTIAL:
+            raise ApiError(
+                code="mascota_sin_permiso_edicion",
+                message="Con vínculo parcial no puede reactivar ni desactivar mascotas del historial global.",
+                status_code=403,
+            )
+    if activo and prev and not prev.activo:
+        plan_quotas.verificar_limite_mascotas_activas(db, empresa_id)
 
     mascota = mascota_repository.actualizar_activo_mascota_por_empresa(
         db, mascota_id, empresa_id, activo
+    )
+    if not mascota:
+        raise ApiError(
+            code="mascota_not_found",
+            message="Mascota no encontrada",
+            status_code=404,
+        )
+    return mascota
+
+
+def actualizar_mascota_datos_service(
+    db: Session,
+    mascota_id: int,
+    empresa_id: int,
+    campos: dict,
+):
+    """Actualiza campos permitidos de la mascota (PATCH parcial)."""
+    prev = mascota_repository.obtener_mascota_por_empresa(
+        db, mascota_id, empresa_id, incluir_inactivas=True
+    )
+    if not prev:
+        raise ApiError(
+            code="mascota_not_found",
+            message="Mascota no encontrada",
+            status_code=404,
+        )
+    if prev.cliente_id:
+        vin = vinculo_repository.obtener_vinculo_activo(db, prev.cliente_id, empresa_id)
+        if vin and vin.access_level == vinculo_repository.ACCESS_PARTIAL:
+            raise ApiError(
+                code="mascota_sin_permiso_edicion",
+                message="Con vínculo parcial no puede editar datos de mascotas del historial global.",
+                status_code=403,
+            )
+    if campos.get("activo") is True and not prev.activo:
+        plan_quotas.verificar_limite_mascotas_activas(db, empresa_id)
+
+    mascota = mascota_repository.actualizar_mascota_campos_por_empresa(
+        db, mascota_id, empresa_id, campos
     )
     if not mascota:
         raise ApiError(
@@ -137,7 +184,8 @@ def mascota_a_response_con_cliente_nombre(db: Session, mascota) -> MascotaRespon
     base = MascotaResponse.model_validate(mascota)
     if not mascota.cliente_id:
         return base
-    nombre = db.query(Cliente.nombre).filter(Cliente.id == mascota.cliente_id).scalar_one_or_none()
+    # session.query() devuelve Query (API legacy): usar .scalar(), no .scalar_one_or_none() (solo en Result de execute())
+    nombre = db.query(Cliente.nombre).filter(Cliente.id == mascota.cliente_id).scalar()
     return base.model_copy(update={"cliente_nombre": nombre})
 
 

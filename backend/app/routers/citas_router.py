@@ -6,6 +6,7 @@ están acotadas por la empresa del usuario autenticado.
 """
 
 from datetime import datetime, date
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,18 +15,22 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.security.dependencies import get_current_user
 from app.security.roles import require_roles
+from app.security.usuario_operativo import (
+    assert_disponibilidad_agenda,
+    assert_puede_ver_cita_agenda,
+    require_acceso_consultorio_user,
+)
 from app.security.admin_permissions import require_admin_permission
 from app.schemas.cita_schema import (
     CitaCreate,
     CitaResponse,
     CitaUpdate,
     CitasDisponibilidadResponse,
-    CitaRecurrenteCreate,
     CitaLlegadaCreate,
-    CitasRecurrentesResponse,
     ListaEsperaCreate,
     ListaEsperaResponse,
 )
+from app.schemas.extras_clinicos_schema import pop_extras_a_json_column
 from app.schemas.common_schema import PaginatedResponse
 from app.schemas.formula_schema import FormulaItemCreate, FormulaItemResponse
 from app.repositories.formula_repository import (
@@ -35,7 +40,6 @@ from app.repositories.formula_repository import (
 )
 from app.services.cita_service import (
     crear_cita_service,
-    crear_citas_recurrentes_service,
     crear_cita_llegada_automatica_service,
     crear_lista_espera_service,
     listar_lista_espera_service,
@@ -55,6 +59,21 @@ from app.services.cita_service import (
 router = APIRouter(prefix="/citas", tags=["Citas"])
 
 
+def _cita_payload_a_orm(d: dict) -> dict:
+    pop_extras_a_json_column(d, "extras_clinicos", "extras_clinicos_json")
+    if "encargados_ids" in d:
+        raw = d.pop("encargados_ids") or []
+        if isinstance(raw, list):
+            vals: list[int] = []
+            for x in raw:
+                try:
+                    vals.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+            d["encargados_json"] = json.dumps(sorted(set(vals)))
+    return d
+
+
 @router.post(
     "/",
     response_model=CitaResponse,
@@ -68,7 +87,9 @@ def crear_cita(
     _perm=Depends(require_admin_permission("admin_gestion_citas")),
 ):
     """Crea una cita asociada a una mascota de la empresa."""
-    c = crear_cita_service(db, payload.model_dump(), current_user.empresa_id)
+    c = crear_cita_service(
+        db, _cita_payload_a_orm(payload.model_dump()), current_user.empresa_id, actor=current_user
+    )
     return cita_a_respuesta(db, c)
 
 
@@ -85,26 +106,12 @@ def crear_cita_llegada(
     _perm=Depends(require_admin_permission("admin_gestion_citas")),
 ):
     c = crear_cita_llegada_automatica_service(
-        db=db, datos=payload.model_dump(), empresa_id=current_user.empresa_id
+        db=db,
+        datos=_cita_payload_a_orm(payload.model_dump()),
+        empresa_id=current_user.empresa_id,
+        actor=current_user,
     )
     return cita_a_respuesta(db, c)
-
-
-@router.post(
-    "/recurrentes",
-    response_model=CitasRecurrentesResponse,
-    summary="Crear citas recurrentes",
-    description="Crea múltiples citas repetidas en el tiempo (cada X semanas). Solo ADMIN y RECEPCIÓN.",
-)
-def crear_citas_recurrentes(
-    payload: CitaRecurrenteCreate,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_roles(1, 3)),
-    _perm=Depends(require_admin_permission("admin_gestion_citas")),
-):
-    datos = payload.model_dump()
-    # endpoint usa fechas iniciales, estado inicial siempre pendiente
-    return crear_citas_recurrentes_service(db=db, datos=datos, empresa_id=current_user.empresa_id)
 
 
 @router.post(
@@ -233,7 +240,7 @@ def promover_siguiente_waitlist(
 def listar_citas_por_mascota(
     mascota_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_acceso_consultorio_user),
 ):
     """Lista todas las citas de una mascota de la empresa."""
     items = listar_citas_mascota_service(db, mascota_id, current_user.empresa_id)
@@ -268,6 +275,7 @@ def listar_agenda(
         estado=estado,
         veterinario_id=veterinario_id,
         en_sala_espera=en_sala_espera,
+        current_user=current_user,
     )
     return PaginatedResponse(
         items=citas_a_respuestas(db, items),
@@ -289,6 +297,7 @@ def disponibilidad_citas(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    assert_disponibilidad_agenda(veterinario_id, current_user)
     empresa_id = current_user.empresa_id
     disponible, reservado = listar_citas_disponibilidad_service(
         db=db,
@@ -314,6 +323,8 @@ def listar_formula_cita_endpoint(
     current_user=Depends(get_current_user),
 ):
     """Lista los medicamentos a recetar (prescripción) de la cita."""
+    c = obtener_cita_service(db, cita_id, current_user.empresa_id)
+    assert_puede_ver_cita_agenda(c.veterinario_id, current_user)
     items = listar_por_cita(db, cita_id, current_user.empresa_id)
     out = []
     for it in items:
@@ -334,6 +345,8 @@ def agregar_item_formula_cita(
     current_user=Depends(_formula_cita_escribir),
 ):
     """Añade un medicamento a recetar en la cita (veterinario)."""
+    c = obtener_cita_service(db, cita_id, current_user.empresa_id)
+    assert_puede_ver_cita_agenda(c.veterinario_id, current_user)
     item = crear_item_cita(
         db=db,
         cita_id=cita_id,
@@ -356,6 +369,8 @@ def quitar_item_formula_cita(
     current_user=Depends(_formula_cita_escribir),
 ):
     """Quita un medicamento de la prescripción de la cita."""
+    c = obtener_cita_service(db, cita_id, current_user.empresa_id)
+    assert_puede_ver_cita_agenda(c.veterinario_id, current_user)
     ok = eliminar_item_cita(db, item_id, current_user.empresa_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
@@ -374,6 +389,7 @@ def obtener_cita(
 ):
     """Obtiene el detalle de una cita (solo si pertenece a la empresa)."""
     c = obtener_cita_service(db, cita_id, current_user.empresa_id)
+    assert_puede_ver_cita_agenda(c.veterinario_id, current_user)
     return cita_a_respuesta(db, c)
 
 
@@ -391,6 +407,6 @@ def actualizar_cita(
     _perm=Depends(require_admin_permission("admin_gestion_citas")),
 ):
     """Actualiza una cita. Solo campos enviados son modificados."""
-    datos = payload.model_dump(exclude_unset=True)
+    datos = _cita_payload_a_orm(payload.model_dump(exclude_unset=True))
     c = actualizar_cita_service(db, cita_id, current_user.empresa_id, datos, current_user)
     return cita_a_respuesta(db, c)

@@ -15,12 +15,14 @@ type Props = {
   onChange: (clienteId: number | null) => void
   disabled?: boolean
   className?: string
+  /** Placeholder del campo de búsqueda */
+  placeholder?: string
 }
 
 /**
  * Selección de cliente por búsqueda (nombre/documento), sin cargar listas masivas.
  */
-export function ClienteSearchSelect({ value, onChange, disabled, className }: Props) {
+export function ClienteSearchSelect({ value, onChange, disabled, className, placeholder }: Props) {
   const [q, setQ] = useState('')
   const debounced = useDebouncedValue(q.trim(), SEARCH_DEBOUNCE_MS)
 
@@ -76,7 +78,10 @@ export function ClienteSearchSelect({ value, onChange, disabled, className }: Pr
         value={q}
         onChange={(e) => setQ(e.target.value)}
         disabled={disabled}
-        placeholder={`Buscar (${SEARCH_MIN_CHARS}+ caracteres: nombre o documento)…`}
+        placeholder={
+          placeholder ??
+          `Buscar (${SEARCH_MIN_CHARS}+ caracteres: nombre o documento)…`
+        }
         className="w-full max-w-md rounded-xl border border-slate-300 px-3 py-2 text-sm"
         autoComplete="off"
       />

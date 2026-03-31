@@ -7,21 +7,38 @@ Lógica de negocio para el módulo de clientes.
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.schemas.cliente_schema import ClienteResponse
 from app.repositories.cliente_repository import (
     crear_cliente,
     listar_clientes_por_empresa,
     obtener_cliente_por_empresa,
+    obtener_cliente_por_documento_normalizado,
     count_clientes_por_empresa,
     desactivar_cliente_por_empresa,
     actualizar_activo_cliente_por_empresa,
     actualizar_cliente_por_empresa,
 )
+from app.repositories import vinculo_repository
 
 
 def crear_cliente_service(db: Session, data: dict, empresa_id: int):
-    """Crea un cliente asociado a la empresa indicada."""
+    """Crea un propietario global y vínculo completo con la clínica actual."""
+    if data.get("telefono") and not (data.get("celular") or "").strip():
+        data["celular"] = data["telefono"]
+    doc = (data.get("documento") or "").strip()
+    if doc:
+        existente = obtener_cliente_por_documento_normalizado(db, doc)
+        if existente:
+            raise ApiError(
+                code="cliente_documento_existe",
+                message="Ya existe un propietario con ese documento. Búsquelo en Consultorio para vincularlo.",
+                status_code=409,
+                details={"cliente_id": existente.id},
+            )
     data["empresa_id"] = empresa_id
-    return crear_cliente(db, data)
+    cliente = crear_cliente(db, data)
+    vinculo_repository.asegurar_vinculo_registro_primario(db, cliente.id, empresa_id)
+    return cliente
 
 
 def listar_clientes_por_empresa_service(
@@ -43,7 +60,7 @@ def listar_clientes_por_empresa_service(
         documento=documento,
         busqueda=busqueda,
     )
-    items = listar_clientes_por_empresa(
+    rows = listar_clientes_por_empresa(
         db=db,
         empresa_id=empresa_id,
         page=page,
@@ -53,6 +70,12 @@ def listar_clientes_por_empresa_service(
         documento=documento,
         busqueda=busqueda,
     )
+    items = [
+        ClienteResponse.model_validate(c).model_copy(
+            update={"mascotas_count": mc, "autorizacion_at": val_at}
+        )
+        for c, mc, val_at in rows
+    ]
     return items, total
 
 
@@ -110,7 +133,16 @@ def actualizar_cliente_service(
     payload: dict,
 ):
     """Actualiza campos del cliente (solo los enviados). Lanza ApiError 404 si no existe."""
-    data = {k: v for k, v in payload.items() if v is not None}
+    vin = vinculo_repository.obtener_vinculo_activo(db, cliente_id, empresa_id)
+    if vin and vin.access_level == vinculo_repository.ACCESS_PARTIAL:
+        raise ApiError(
+            code="cliente_sin_permiso_edicion",
+            message="El vínculo con este propietario es parcial: no puede editar sus datos hasta ampliar el consentimiento.",
+            status_code=403,
+        )
+    data = {k: val for k, val in payload.items() if val is not None}
+    if "telefono" in data and "celular" not in data:
+        data["celular"] = data["telefono"]
     if not data:
         return obtener_cliente_por_empresa_service(db, cliente_id, empresa_id)
     cliente = actualizar_cliente_por_empresa(db, cliente_id, empresa_id, data)

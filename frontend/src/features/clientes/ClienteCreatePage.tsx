@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createCliente } from './api'
 import { clientesKeys } from './hooks/useClientes'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
@@ -19,6 +20,7 @@ export function ClienteCreatePage() {
   const [email, setEmail] = useState('')
   const [direccion, setDireccion] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [documentoDuplicado, setDocumentoDuplicado] = useState(false)
 
   const mutation = useMutation({
     mutationFn: createCliente,
@@ -30,6 +32,7 @@ export function ClienteCreatePage() {
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : 'Error al crear cliente.'
       setError(msg)
+      setDocumentoDuplicado(err instanceof ApiError && err.code === 'cliente_documento_existe')
       toast.error(msg)
     },
   })
@@ -37,6 +40,7 @@ export function ClienteCreatePage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setDocumentoDuplicado(false)
     if (!nombre.trim()) {
       setError('El nombre es obligatorio.')
       toast.warning('El nombre es obligatorio.')
@@ -52,13 +56,31 @@ export function ClienteCreatePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Nuevo cliente</h1>
+    <div className="mx-auto max-w-3xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Clientes', to: '/clientes' }, { label: 'Nuevo' }]}
+        title="Nuevo cliente"
+        subtitle="Alta de tutor en tu empresa."
+        actions={
+          <Link to="/clientes" className="text-sm font-medium text-primary-600 hover:text-primary-800">
+            ← Volver al listado
+          </Link>
+        }
+      />
       <Card title="Datos del cliente">
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-4">
           {error && (
             <Alert variant="error" onDismiss={() => setError(null)}>
-              {error}
+              <p>{error}</p>
+              {documentoDuplicado ? (
+                <p className="mt-2 text-sm">
+                  Use{' '}
+                  <Link to="/consultorio" className="font-semibold text-primary-700 underline">
+                    Consultorio
+                  </Link>{' '}
+                  para buscar por documento y vincular el propietario a su clínica.
+                </p>
+              ) : null}
             </Alert>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

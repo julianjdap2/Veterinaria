@@ -29,6 +29,7 @@ class EmpresaConfiguracion(Base):
     feature_recordatorios_automaticos = Column(Boolean, nullable=False, default=True)
     feature_dashboard_avanzado = Column(Boolean, nullable=False, default=False)
     feature_exportaciones = Column(Boolean, nullable=False, default=True)
+    modulo_planes_salud = Column(Boolean, nullable=False, default=True)
 
     # Consecutivo interno de ventas (por empresa; configurable en admin clínica)
     venta_prefijo = Column(String(20), nullable=False, default="V-")
@@ -37,5 +38,8 @@ class EmpresaConfiguracion(Base):
 
     # Recordatorios y plantillas (JSON); ver services/notificaciones_config_service.py
     notificaciones_json = Column(Text, nullable=True)
+
+    # Catálogos clínicos (vacunas, hospitalización, procedimientos, laboratorio, formatos); ver variables_clinicas_service.py
+    variables_clinicas_json = Column(Text, nullable=True)
 
     created_at = Column(TIMESTAMP, server_default=func.now())

@@ -7,7 +7,9 @@ import { useCreateVenta } from './hooks/useVentas'
 import { fetchConsultaById, fetchConsultasPorCliente, fetchFormula } from '../consultas/api'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Alert } from '../../shared/ui/Alert'
+import { Table, TableBody, TableHead, TableRow, TableTd, TableTh } from '../../shared/ui/Table'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
 import { PAGE_SIZE_SELECT } from '../../core/listDefaults'
@@ -154,29 +156,39 @@ export function VentaNuevaPage() {
   const haySinExistencias = checklist.some((r) => r.incluir && r.stock_actual < r.cantidad)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">
-          {consultaId ? 'Registrar venta desde fórmula' : 'Nueva venta'}
-        </h1>
-        {consultaId && (
-          <Link to={`/consultas/${consultaId}`} className="text-sm text-primary-600 hover:underline">
-            ← Volver a consulta
-          </Link>
-        )}
-        {!consultaId && step !== 'cliente' && (
-          <button
-            type="button"
-            onClick={() => {
-              if (step === 'checklist') setStep('consulta')
-              else setStep('cliente')
-            }}
-            className="text-sm text-primary-600 hover:underline"
-          >
-            ← Atrás
-          </button>
-        )}
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[
+          { label: 'Ventas', to: '/ventas' },
+          { label: consultaId ? 'Desde fórmula' : 'Nueva' },
+        ]}
+        title={consultaId ? 'Registrar venta desde fórmula' : 'Nueva venta'}
+        subtitle="Cliente, consulta con fórmula y artículos a facturar."
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {consultaId && (
+              <Link to={`/consultas/${consultaId}`} className="text-sm font-medium text-primary-600 hover:text-primary-800">
+                ← Volver a consulta
+              </Link>
+            )}
+            {!consultaId && step !== 'cliente' && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (step === 'checklist') setStep('consulta')
+                  else setStep('cliente')
+                }}
+                className="text-sm font-medium text-primary-600 hover:text-primary-800"
+              >
+                ← Atrás
+              </button>
+            )}
+            <Link to="/ventas" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+              Listado de ventas
+            </Link>
+          </div>
+        }
+      />
 
       {!stateConsultaId && step === 'cliente' && (
         <Card title="1. Seleccionar propietario (cliente)">
@@ -259,28 +271,27 @@ export function VentaNuevaPage() {
             )}
 
             {checklist.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-left text-slate-600">
-                      <th className="pb-2 pr-4 w-10">Llevar</th>
-                      <th className="pb-2 pr-4">Medicamento</th>
-                      <th className="pb-2 pr-4">Presentación</th>
-                      <th className="pb-2 pr-4 w-24">Precio</th>
-                      <th className="pb-2 pr-4 w-24">Cantidad</th>
-                      <th className="pb-2 pr-4 w-28">Stock</th>
-                      <th className="pb-2 pr-4">Observación</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {checklist.map((r, idx) => {
-                      const sinStock = r.stock_actual < r.cantidad
-                      return (
-                        <tr
-                          key={r.id}
-                          className={`border-b border-slate-100 ${sinStock && r.incluir ? 'bg-red-50' : ''}`}
-                        >
-                          <td className="py-2 pr-4">
+              <Table plain className="w-full text-sm">
+                <TableHead>
+                  <TableRow header>
+                    <TableTh className="w-10 !pb-2 !pr-4">Llevar</TableTh>
+                    <TableTh className="!pb-2 !pr-4">Medicamento</TableTh>
+                    <TableTh className="!pb-2 !pr-4">Presentación</TableTh>
+                    <TableTh className="w-24 !pb-2 !pr-4">Precio</TableTh>
+                    <TableTh className="w-24 !pb-2 !pr-4">Cantidad</TableTh>
+                    <TableTh className="w-28 !pb-2 !pr-4">Stock</TableTh>
+                    <TableTh className="!pb-2 !pr-4">Observación</TableTh>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {checklist.map((r, idx) => {
+                    const sinStock = r.stock_actual < r.cantidad
+                    return (
+                      <TableRow
+                        key={r.id}
+                        className={sinStock && r.incluir ? '!bg-red-50 hover:!bg-red-50 even:!bg-red-50' : ''}
+                      >
+                        <TableTd className="!py-2 !pr-4">
                             <input
                               type="checkbox"
                               checked={r.incluir}
@@ -288,13 +299,13 @@ export function VentaNuevaPage() {
                               disabled={r.stock_actual === 0}
                               className="rounded border-slate-300"
                             />
-                          </td>
-                          <td className="py-2 pr-4 font-medium">{r.producto_nombre ?? '—'}</td>
-                          <td className="py-2 pr-4">{r.presentacion ?? '—'}</td>
-                          <td className="py-2 pr-4">
+                          </TableTd>
+                          <TableTd className="!py-2 !pr-4 font-medium">{r.producto_nombre ?? '—'}</TableTd>
+                          <TableTd className="!py-2 !pr-4">{r.presentacion ?? '—'}</TableTd>
+                          <TableTd className="!py-2 !pr-4">
                             {r.precio != null ? Number(r.precio).toFixed(2) : '—'}
-                          </td>
-                          <td className="py-2 pr-4">
+                          </TableTd>
+                          <TableTd className="!py-2 !pr-4">
                             <input
                               type="number"
                               min="0"
@@ -302,8 +313,8 @@ export function VentaNuevaPage() {
                               onChange={(e) => updateCantidad(idx, parseInt(e.target.value, 10) || 0)}
                               className="w-20 rounded border border-slate-300 px-2 py-1.5"
                             />
-                          </td>
-                          <td className="py-2 pr-4">
+                          </TableTd>
+                          <TableTd className="!py-2 !pr-4">
                             {r.stock_actual === 0 ? (
                               <span className="font-medium text-red-600">Sin existencias</span>
                             ) : r.stock_actual < r.cantidad && r.incluir ? (
@@ -313,16 +324,15 @@ export function VentaNuevaPage() {
                             ) : (
                               <span className="text-slate-600">{r.stock_actual}</span>
                             )}
-                          </td>
-                          <td className="py-2 pr-4 max-w-[180px] truncate" title={r.observacion ?? ''}>
+                          </TableTd>
+                          <TableTd className="max-w-[180px] !py-2 !pr-4 truncate" title={r.observacion ?? ''}>
                             {r.observacion ?? '—'}
-                          </td>
-                        </tr>
+                          </TableTd>
+                        </TableRow>
                       )
                     })}
-                  </tbody>
-                </table>
-              </div>
+                </TableBody>
+              </Table>
             )}
 
             {checklist.filter((r) => r.incluir && r.cantidad > 0).length > 0 && (

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ClienteSearchSelect } from '../clientes/components/ClienteSearchSelect'
 import { useEspecies } from '../catalogo/hooks/useEspecies'
@@ -8,6 +8,7 @@ import { createMascota } from './api'
 import { mascotasKeys } from './hooks/useMascotas'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
@@ -15,6 +16,7 @@ import { ApiError } from '../../api/errors'
 
 export function MascotaCreatePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [nombre, setNombre] = useState('')
   const [clienteId, setClienteId] = useState<number | null>(null)
@@ -29,6 +31,13 @@ export function MascotaCreatePage() {
 
   const { data: especies = [] } = useEspecies()
   const { data: razas = [] } = useRazas(especieId ? parseInt(especieId, 10) : null)
+
+  useEffect(() => {
+    const raw = searchParams.get('cliente_id')
+    if (!raw) return
+    const n = parseInt(raw, 10)
+    if (Number.isFinite(n) && n > 0) setClienteId(n)
+  }, [searchParams])
 
   const mutation = useMutation({
     mutationFn: createMascota,
@@ -72,8 +81,17 @@ export function MascotaCreatePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Nueva mascota</h1>
+    <div className="mx-auto max-w-3xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Mascotas', to: '/mascotas' }, { label: 'Nueva' }]}
+        title="Nueva mascota"
+        subtitle="Asocia el paciente a un tutor y completa la ficha básica."
+        actions={
+          <Link to="/mascotas" className="text-sm font-medium text-primary-600 hover:text-primary-800">
+            ← Volver al listado
+          </Link>
+        }
+      />
       <Card title="Datos de la mascota">
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-4">
           {error && (

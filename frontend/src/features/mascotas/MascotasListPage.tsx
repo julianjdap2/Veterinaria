@@ -6,8 +6,9 @@ import { useAllRazas } from '../catalogo/hooks/useRazas'
 import { useMascotas } from './hooks/useMascotas'
 import { deleteMascota, updateMascotaActivo } from './api'
 import { mascotasKeys } from './hooks/useMascotas'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
 import { Input } from '../../shared/ui/Input'
 import { Table, TableHead, TableBody, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
 import { Pagination } from '../../shared/ui/Pagination'
@@ -67,17 +68,21 @@ export function MascotasListPage() {
   const showError = error ?? (isError && queryError instanceof ApiError ? queryError.message : null)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Mascotas</h1>
-        <Link to="/mascotas/nuevo">
-          <Button>Nueva mascota</Button>
-        </Link>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Mascotas' }]}
+        title="Mascotas"
+        subtitle="Pacientes vinculados a tutores. Búsqueda por nombre de mascota, dueño o documento."
+        actions={
+          <Link to="/mascotas/nuevo">
+            <Button>Nueva mascota</Button>
+          </Link>
+        }
+      />
 
-      <Card title="Listado">
+      <DataListPanel kicker="Pacientes" title="Listado" description="Historial clínico y citas desde la ficha de cada mascota.">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-100 bg-slate-50/50 px-4 py-3">
             <Input
               placeholder="Buscar por mascota, nombre del dueño o documento"
               value={busqueda}
@@ -87,7 +92,7 @@ export function MascotasListPage() {
               }}
               className="max-w-md"
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={incluirInactivos}
@@ -95,7 +100,7 @@ export function MascotasListPage() {
                   setIncluirInactivos(e.target.checked)
                   setPage(1)
                 }}
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
               />
               Incluir inactivas
             </label>
@@ -105,12 +110,12 @@ export function MascotasListPage() {
               {showError}
             </Alert>
           )}
-          {isLoading && <p className="text-sm text-gray-500">Cargando...</p>}
+          {isLoading && <p className="text-sm text-slate-500">Cargando...</p>}
           {data && (
             <>
-              <Table>
+              <Table plain>
                 <TableHead>
-                  <TableRow>
+                  <TableRow header>
                     <TableTh>Nombre</TableTh>
                     <TableTh>Cliente</TableTh>
                     <TableTh>Especie / Raza</TableTh>
@@ -121,7 +126,7 @@ export function MascotasListPage() {
                 </TableHead>
                 <TableBody>
                   {data.items.map((m) => (
-                    <TableRow key={m.id} className={!m.activo ? 'bg-gray-50' : ''}>
+                    <TableRow key={m.id} className={!m.activo ? 'bg-slate-50/80' : ''}>
                       <TableTd>
                         <Link
                           to={`/mascotas/${m.id}`}
@@ -183,7 +188,7 @@ export function MascotasListPage() {
             </>
           )}
         </div>
-      </Card>
+      </DataListPanel>
     </div>
   )
 }

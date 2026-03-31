@@ -4,8 +4,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClientes } from './hooks/useClientes'
 import { deleteCliente, updateClienteActivo } from './api'
 import { clientesKeys } from './hooks/useClientes'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
 import { Input } from '../../shared/ui/Input'
 import { Table, TableHead, TableBody, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
 import { Pagination } from '../../shared/ui/Pagination'
@@ -61,17 +62,21 @@ export function ClientesListPage() {
   const showError = error ?? (isError && queryError instanceof ApiError ? queryError.message : null)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-        <Link to="/clientes/nuevo">
-          <Button>Nuevo cliente</Button>
-        </Link>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Clientes' }]}
+        title="Clientes"
+        subtitle="Tutores y datos de contacto. Busca por nombre o documento y gestiona el estado."
+        actions={
+          <Link to="/clientes/nuevo">
+            <Button>Nuevo cliente</Button>
+          </Link>
+        }
+      />
 
-      <Card title="Listado">
+      <DataListPanel kicker="Directorio" title="Listado" description="Resultados paginados en tu empresa.">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-100 bg-slate-50/50 px-4 py-3">
             <Input
               placeholder="Buscar por nombre o documento"
               value={busqueda}
@@ -81,7 +86,7 @@ export function ClientesListPage() {
               }}
               className="max-w-md"
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={incluirInactivos}
@@ -89,7 +94,7 @@ export function ClientesListPage() {
                   setIncluirInactivos(e.target.checked)
                   setPage(1)
                 }}
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
               />
               Incluir inactivos
             </label>
@@ -99,12 +104,12 @@ export function ClientesListPage() {
               {showError}
             </Alert>
           )}
-          {isLoading && <p className="text-sm text-gray-500">Cargando...</p>}
+          {isLoading && <p className="text-sm text-slate-500">Cargando...</p>}
           {data && (
             <>
-              <Table>
+              <Table plain>
                 <TableHead>
-                  <TableRow>
+                  <TableRow header>
                     <TableTh>Nombre</TableTh>
                     <TableTh>Documento</TableTh>
                     <TableTh>Teléfono</TableTh>
@@ -115,7 +120,7 @@ export function ClientesListPage() {
                 </TableHead>
                 <TableBody>
                   {data.items.map((c) => (
-                    <TableRow key={c.id} className={!c.activo ? 'bg-gray-50' : ''}>
+                    <TableRow key={c.id} className={!c.activo ? 'bg-slate-50/80' : ''}>
                       <TableTd>
                         <Link
                           to={`/clientes/${c.id}`}
@@ -166,7 +171,7 @@ export function ClientesListPage() {
             </>
           )}
         </div>
-      </Card>
+      </DataListPanel>
     </div>
   )
 }

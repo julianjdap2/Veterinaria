@@ -12,12 +12,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.core.errors import ApiError
+from app.models.cliente import Cliente
 from app.models.mascota import Mascota
 from app.models.cita import Cita
 from app.models.lista_espera import ListaEspera
 from app.models.usuario import Usuario
 from app.schemas.cita_schema import CitaResponse
 from app.repositories.cita_repository import (
+    base_query_citas_empresa,
     crear_cita,
     listar_citas_por_mascota,
     listar_citas_por_empresa_y_rango,
@@ -25,8 +27,14 @@ from app.repositories.cita_repository import (
     obtener_cita_por_id_y_empresa,
     actualizar_cita,
 )
+from app.repositories.mascota_repository import obtener_mascota_por_empresa
 from app.repositories.usuario_repository import listar_veterinarios_por_empresa
 from app.services import plan_quotas
+from app.security.usuario_operativo import (
+    operativo_para_enforcement,
+    validar_cita_operativa_creacion,
+    assert_puede_ver_cita_agenda,
+)
 
 
 SLOT_MINUTES = 30
@@ -47,12 +55,8 @@ def _slots_jornada() -> list[str]:
 
 
 def _verificar_mascota_empresa(db: Session, mascota_id: int, empresa_id: int) -> Mascota:
-    """Comprueba que la mascota exista y pertenezca a la empresa."""
-    mascota = (
-        db.query(Mascota)
-        .filter(Mascota.id == mascota_id, Mascota.empresa_id == empresa_id, Mascota.activo.is_(True))
-        .first()
-    )
+    """Comprueba que la mascota exista y sea accesible por vínculo con la empresa."""
+    mascota = obtener_mascota_por_empresa(db, mascota_id, empresa_id, incluir_inactivas=False)
     if not mascota:
         raise ApiError(
             code="mascota_not_found",
@@ -62,19 +66,42 @@ def _verificar_mascota_empresa(db: Session, mascota_id: int, empresa_id: int) ->
     return mascota
 
 
-def crear_cita_service(db: Session, datos: dict, empresa_id: int):
+def crear_cita_service(db: Session, datos: dict, empresa_id: int, actor: Usuario | None = None):
     """Crea una cita para una mascota de la empresa."""
-    _verificar_mascota_empresa(db, datos["mascota_id"], empresa_id)
+    datos = {**datos, "empresa_id": empresa_id}
+    solo_reservar_espacio = bool(datos.pop("solo_reservar_espacio", False))
+    mascota_id = datos.get("mascota_id")
+    if mascota_id is None:
+        if not solo_reservar_espacio:
+            raise ApiError(
+                code="mascota_required",
+                message="Selecciona una mascota o activa 'Solo reservar el espacio'.",
+                status_code=400,
+            )
+        datos["estado"] = "confirmada"
+        datos["en_sala_espera"] = False
+    else:
+        _verificar_mascota_empresa(db, int(mascota_id), empresa_id)
+    validar_cita_operativa_creacion(db, datos, empresa_id, actor)
 
     fecha_cuota = datos.get("fecha")
     if fecha_cuota is not None and isinstance(fecha_cuota, datetime):
         plan_quotas.verificar_limite_citas_mes(db, empresa_id, fecha_cuota)
+    fecha_fin = datos.get("fecha_fin")
+    if fecha_cuota is not None and fecha_fin is not None and isinstance(fecha_fin, datetime) and isinstance(fecha_cuota, datetime):
+        if fecha_fin < fecha_cuota:
+            raise ApiError(
+                code="cita_fecha_fin_invalid",
+                message="La fecha/hora de finalización no puede ser menor al inicio.",
+                status_code=400,
+            )
 
     # Validación de disponibilidad (bloqueo por slots) si viene veterinario + fecha.
     # Esto evita que recepción elija horas arbitrarias.
     fecha_dt = datos.get("fecha")
     veterinario_id = datos.get("veterinario_id")
-    if fecha_dt is not None and veterinario_id is not None:
+    sin_hora_definida = bool(datos.get("sin_hora_definida", False))
+    if (not sin_hora_definida) and fecha_dt is not None and veterinario_id is not None:
         if not isinstance(fecha_dt, datetime):
             # Pydantic debería convertir a datetime; si no, rechazamos para evitar inconsistencias.
             raise ApiError(
@@ -99,10 +126,8 @@ def crear_cita_service(db: Session, datos: dict, empresa_id: int):
 
         # Existe otra cita en el mismo slot (se considera ocupada si no está cancelada).
         existe = (
-            db.query(Cita)
-            .join(Mascota)
+            base_query_citas_empresa(db, empresa_id)
             .filter(
-                Mascota.empresa_id == empresa_id,
                 Cita.veterinario_id == veterinario_id,
                 Cita.fecha >= slot_start,
                 Cita.fecha < slot_end,
@@ -121,84 +146,6 @@ def crear_cita_service(db: Session, datos: dict, empresa_id: int):
     return crear_cita(db, datos)
 
 
-def crear_citas_recurrentes_service(
-    db: Session,
-    datos: dict,
-    empresa_id: int,
-):
-    """Crea citas repetidas (cada X semanas) y devuelve IDs creados/omitidos."""
-    repeticiones: int = int(datos.get("repeticiones") or 2)
-    intervalo_semana: int = int(datos.get("intervalo_semana") or 1)
-    fecha_inicio = datos.get("fecha_inicio")
-
-    if not fecha_inicio or not isinstance(fecha_inicio, datetime):
-        raise ApiError(
-            code="cita_fecha_invalid",
-            message="Formato de fecha_inicio inválido",
-            status_code=400,
-        )
-
-    mascota_id = datos.get("mascota_id")
-    veterinario_id = datos.get("veterinario_id")
-    if mascota_id is None or veterinario_id is None:
-        raise ApiError(
-            code="cita_recurrente_invalid",
-            message="mascota_id y veterinario_id son requeridos",
-            status_code=400,
-        )
-
-    created_ids: list[int] = []
-    skipped: list[dict] = []
-    waitlist_ids: list[int] = []
-    crear_waitlist_en_conflicto = bool(datos.get("crear_waitlist_en_conflicto", True))
-
-    # Base (campos que se repiten; fecha se modifica en cada iteración)
-    base = dict(datos)
-    base.pop("repeticiones", None)
-    base.pop("intervalo_semana", None)
-    base.pop("fecha_inicio", None)
-    base.pop("crear_waitlist_en_conflicto", None)
-    base["estado"] = "pendiente"  # siempre inicial
-    base["mascota_id"] = mascota_id
-    base["veterinario_id"] = veterinario_id
-
-    for i in range(repeticiones):
-        fecha_i = fecha_inicio + timedelta(weeks=intervalo_semana * i)
-        base_i = {**base, "fecha": fecha_i}
-        try:
-            cita = crear_cita_service(db=db, datos=base_i, empresa_id=empresa_id)
-            created_ids.append(cita.id)
-        except ApiError as e:
-            # En caso de conflicto por slot, omitimos esa iteración.
-            if crear_waitlist_en_conflicto and e.code == "cita_slot_occupied":
-                try:
-                    entry = crear_lista_espera_service(
-                        db=db,
-                        empresa_id=empresa_id,
-                        datos={
-                            "mascota_id": mascota_id,
-                            "veterinario_id": veterinario_id,
-                            "fecha": fecha_i,
-                            "motivo": base.get("motivo"),
-                            "notas": base.get("notas"),
-                            "urgente": bool(base.get("urgente", False)),
-                        },
-                    )
-                    waitlist_ids.append(entry.id)
-                except ApiError:
-                    # Si no se puede crear waitlist, mantenemos skipped.
-                    pass
-            skipped.append(
-                {
-                    "fecha": fecha_i.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "message": e.message,
-                    "code": e.code,
-                    "status_code": e.status_code,
-                }
-            )
-    return {"created_ids": created_ids, "skipped": skipped, "waitlist_ids": waitlist_ids}
-
-
 def crear_lista_espera_service(db: Session, datos: dict, empresa_id: int) -> ListaEspera:
     """Crea un registro en lista de espera para un slot ocupado."""
     mascota_id = datos.get("mascota_id")
@@ -206,12 +153,12 @@ def crear_lista_espera_service(db: Session, datos: dict, empresa_id: int) -> Lis
     fecha_dt = datos.get("fecha")
 
     if mascota_id is None:
-        raise ApiError(code="cita_recurrente_invalid", message="mascota_id es requerido", status_code=400)
+        raise ApiError(code="cita_lista_espera_invalid", message="mascota_id es requerido", status_code=400)
     _verificar_mascota_empresa(db, mascota_id, empresa_id)
 
     if veterinario_id is None:
         raise ApiError(
-            code="cita_recurrente_invalid",
+            code="cita_lista_espera_invalid",
             message="veterinario_id es requerido",
             status_code=400,
         )
@@ -275,10 +222,8 @@ def _primer_slot_disponible_vet(
         while cursor <= day_end:
             slot_end = cursor + timedelta(minutes=SLOT_MINUTES)
             existe = (
-                db.query(Cita)
-                .join(Mascota)
+                base_query_citas_empresa(db, empresa_id)
                 .filter(
-                    Mascota.empresa_id == empresa_id,
                     Cita.veterinario_id == veterinario_id,
                     Cita.fecha >= cursor,
                     Cita.fecha < slot_end,
@@ -309,10 +254,8 @@ def _active_load_vet(db: Session, empresa_id: int, veterinario_id: int, day: dat
     start = datetime.combine(day, time.min)
     end = start + timedelta(days=1)
     return (
-        db.query(Cita)
-        .join(Mascota)
+        base_query_citas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             Cita.veterinario_id == veterinario_id,
             Cita.fecha >= start,
             Cita.fecha < end,
@@ -322,11 +265,19 @@ def _active_load_vet(db: Session, empresa_id: int, veterinario_id: int, day: dat
     )
 
 
-def crear_cita_llegada_automatica_service(db: Session, datos: dict, empresa_id: int) -> Cita:
+def _veterinario_disponible_para_agenda(db: Session, u: Usuario) -> bool:
+    if u.rol_id != 2:
+        return True
+    return operativo_para_enforcement(u).agenda_personal
+
+
+def crear_cita_llegada_automatica_service(
+    db: Session, datos: dict, empresa_id: int, actor: Usuario | None = None
+) -> Cita:
     """Crea una cita por orden de llegada asignando el mejor veterinario/slot disponible."""
     mascota_id = datos.get("mascota_id")
     if mascota_id is None:
-        raise ApiError(code="cita_recurrente_invalid", message="mascota_id es requerido", status_code=400)
+        raise ApiError(code="cita_llegada_invalid", message="mascota_id es requerido", status_code=400)
     _verificar_mascota_empresa(db, mascota_id, empresa_id)
 
     now_dt = datos.get("fecha_llegada")
@@ -335,9 +286,17 @@ def crear_cita_llegada_automatica_service(db: Session, datos: dict, empresa_id: 
     if not isinstance(now_dt, datetime):
         raise ApiError(code="cita_fecha_invalid", message="fecha_llegada inválida", status_code=400)
 
-    veterinarios = listar_veterinarios_por_empresa(db, empresa_id)
+    veterinarios = [
+        v
+        for v in listar_veterinarios_por_empresa(db, empresa_id)
+        if _veterinario_disponible_para_agenda(db, v)
+    ]
     if not veterinarios:
-        raise ApiError(code="vet_not_found", message="No hay veterinarios activos disponibles", status_code=400)
+        raise ApiError(
+            code="vet_not_found",
+            message="No hay veterinarios activos habilitados en agenda para asignar la cita",
+            status_code=400,
+        )
 
     preferido = datos.get("veterinario_preferido_id")
     candidatos = [v for v in veterinarios if (preferido is None or v.id == preferido)]
@@ -367,6 +326,7 @@ def crear_cita_llegada_automatica_service(db: Session, datos: dict, empresa_id: 
     return crear_cita_service(
         db=db,
         empresa_id=empresa_id,
+        actor=actor,
         datos={
             "mascota_id": mascota_id,
             "fecha": slot,
@@ -376,6 +336,7 @@ def crear_cita_llegada_automatica_service(db: Session, datos: dict, empresa_id: 
             "urgente": bool(datos.get("urgente", False)),
             "en_sala_espera": True,
             "estado": "confirmada",
+            "extras_clinicos_json": datos.get("extras_clinicos_json"),
         },
     )
 
@@ -566,10 +527,8 @@ def listar_citas_disponibilidad_service(
     day_end = day_start + timedelta(days=1)
 
     citas = (
-        db.query(Cita)
-        .join(Mascota)
+        base_query_citas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             Cita.veterinario_id == veterinario_id,
             Cita.fecha >= day_start,
             Cita.fecha < day_end,
@@ -601,7 +560,7 @@ def listar_citas_mascota_service(db: Session, mascota_id: int, empresa_id: int):
 
 
 def citas_a_respuestas(db: Session, citas: list) -> list[CitaResponse]:
-    """Enriquece citas con nombre del veterinario y de la mascota (batch)."""
+    """Enriquece citas con veterinario, mascota y propietario (batch)."""
     if not citas:
         return []
     ids = {c.veterinario_id for c in citas if getattr(c, "veterinario_id", None)}
@@ -611,9 +570,16 @@ def citas_a_respuestas(db: Session, citas: list) -> list[CitaResponse]:
             nombres[u.id] = u.nombre
     mids = {c.mascota_id for c in citas if getattr(c, "mascota_id", None)}
     mnames: dict[int, str] = {}
+    cnames: dict[int, str] = {}
     if mids:
-        for mid, nombre in db.query(Mascota.id, Mascota.nombre).filter(Mascota.id.in_(mids)).all():
-            mnames[int(mid)] = nombre
+        for mid, mnombre, cnombre in (
+            db.query(Mascota.id, Mascota.nombre, Cliente.nombre)
+            .join(Cliente, Mascota.cliente_id == Cliente.id)
+            .filter(Mascota.id.in_(mids))
+            .all()
+        ):
+            mnames[int(mid)] = mnombre or ""
+            cnames[int(mid)] = cnombre or ""
     out: list[CitaResponse] = []
     for c in citas:
         r = CitaResponse.model_validate(c)
@@ -624,6 +590,7 @@ def citas_a_respuestas(db: Session, citas: list) -> list[CitaResponse]:
                 update={
                     "veterinario_nombre": nombres.get(vid) if vid else None,
                     "mascota_nombre": mnames.get(mid) if mid else None,
+                    "cliente_nombre": cnames.get(mid) if mid else None,
                 }
             )
         )
@@ -655,15 +622,22 @@ def listar_citas_agenda_service(
     estado: Optional[str] = None,
     veterinario_id: Optional[int] = None,
     en_sala_espera: Optional[bool] = None,
+    current_user: Usuario | None = None,
 ) -> tuple[list, int]:
     """Lista citas de la empresa (agenda); devuelve (items, total)."""
+    eff_veterinario_id = veterinario_id
+    if current_user is not None and current_user.rol_id == 2:
+        op = operativo_para_enforcement(current_user)
+        if not op.admin_agenda:
+            eff_veterinario_id = current_user.id
+
     total = count_citas_por_empresa_y_rango(
         db,
         empresa_id,
         fecha_desde,
         fecha_hasta,
         estado=estado,
-        veterinario_id=veterinario_id,
+        veterinario_id=eff_veterinario_id,
         en_sala_espera=en_sala_espera,
     )
     items = listar_citas_por_empresa_y_rango(
@@ -674,7 +648,7 @@ def listar_citas_agenda_service(
         page,
         page_size,
         estado=estado,
-        veterinario_id=veterinario_id,
+        veterinario_id=eff_veterinario_id,
         en_sala_espera=en_sala_espera,
     )
     return items, total
@@ -701,6 +675,15 @@ def actualizar_cita_service(db: Session, cita_id: int, empresa_id: int, datos: d
             message="Cita no encontrada",
             status_code=404,
         )
+
+    assert_puede_ver_cita_agenda(cita.veterinario_id, current_user)
+
+    if datos:
+        preview = {
+            "motivo": datos["motivo"] if "motivo" in datos else cita.motivo,
+            "veterinario_id": datos["veterinario_id"] if "veterinario_id" in datos else cita.veterinario_id,
+        }
+        validar_cita_operativa_creacion(db, preview, empresa_id, current_user)
 
     if _cita_no_editable_por_historial(cita) and datos:
         raise ApiError(
@@ -764,10 +747,44 @@ def actualizar_cita_service(db: Session, cita_id: int, empresa_id: int, datos: d
     if nuevo_estado in ("revision", "atendida", "cancelada"):
         datos["en_sala_espera"] = False
 
+    # Reprogramación: si solo se envía `fecha`, conservar la duración del evento (evita fecha_fin < nuevo inicio).
+    if (
+        "fecha" in datos
+        and "fecha_fin" not in datos
+        and datos.get("fecha") is not None
+        and isinstance(datos["fecha"], datetime)
+    ):
+        nueva_ini = datos["fecha"]
+        ini_ant = cita.fecha
+        fin_ant = cita.fecha_fin
+        if ini_ant is not None and fin_ant is not None:
+            delta = fin_ant - ini_ant
+            if delta.total_seconds() > 0:
+                datos["fecha_fin"] = nueva_ini + delta
+            else:
+                datos["fecha_fin"] = nueva_ini + timedelta(minutes=SLOT_MINUTES)
+        else:
+            datos["fecha_fin"] = nueva_ini + timedelta(minutes=SLOT_MINUTES)
+
     # Validación de bloqueo por slots si se reprograma por fecha (misma lógica que crear_cita_service).
     # Esto evita que la UI (drag/drop) mueva citas a horarios ya ocupados.
     fecha_dt = datos.get("fecha")
-    if fecha_dt is not None:
+    sin_hora_definida = bool(datos.get("sin_hora_definida", cita.sin_hora_definida))
+    fecha_fin_nueva = datos.get("fecha_fin", cita.fecha_fin)
+    fecha_inicio_nueva = datos.get("fecha", cita.fecha)
+    if (
+        fecha_inicio_nueva is not None
+        and fecha_fin_nueva is not None
+        and isinstance(fecha_inicio_nueva, datetime)
+        and isinstance(fecha_fin_nueva, datetime)
+        and fecha_fin_nueva < fecha_inicio_nueva
+    ):
+        raise ApiError(
+            code="cita_fecha_fin_invalid",
+            message="La fecha/hora de finalización no puede ser menor al inicio.",
+            status_code=400,
+        )
+    if (not sin_hora_definida) and fecha_dt is not None:
         if not isinstance(fecha_dt, datetime):
             raise ApiError(
                 code="cita_fecha_invalid",
@@ -800,10 +817,8 @@ def actualizar_cita_service(db: Session, cita_id: int, empresa_id: int, datos: d
 
             # Existe otra cita en el mismo slot para ese veterinario (no cancelada).
             existe = (
-                db.query(Cita)
-                .join(Mascota)
+                base_query_citas_empresa(db, empresa_id)
                 .filter(
-                    Mascota.empresa_id == empresa_id,
                     Cita.veterinario_id == efectivo_veterinario_id,
                     Cita.id != cita_id,
                     Cita.fecha >= slot_start,

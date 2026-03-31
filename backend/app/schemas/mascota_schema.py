@@ -25,8 +25,16 @@ class MascotaBase(BaseModel):
 
 
 class MascotaUpdate(BaseModel):
-    """Payload para actualizar mascota (p. ej. reactivar)."""
+    """Actualización parcial: solo los campos enviados se modifican."""
 
+    nombre: Optional[str] = None
+    especie_id: Optional[int] = None
+    raza_id: Optional[int] = None
+    sexo: Optional[str] = None
+    fecha_nacimiento: Optional[date] = None
+    color: Optional[str] = None
+    peso: Optional[float] = None
+    alergias: Optional[str] = None
     activo: Optional[bool] = None
 
 

@@ -8,9 +8,7 @@ import type {
   CitaCreate,
   CitaUpdate,
   CitasDisponibilidad,
-  CitaRecurrenteCreate,
   CitaLlegadaCreate,
-  CitasRecurrentesResponse,
   ListaEsperaCreate,
   ListaEsperaResponse,
 } from '../../api/types'
@@ -56,13 +54,6 @@ export async function createCitaLlegada(payload: CitaLlegadaCreate): Promise<Cit
 
 export async function updateCita(id: number, payload: CitaUpdate): Promise<Cita> {
   const { data } = await apiClient.patch<Cita>(`/citas/${id}`, payload)
-  return data
-}
-
-export async function createCitasRecurrentes(
-  payload: CitaRecurrenteCreate,
-): Promise<CitasRecurrentesResponse> {
-  const { data } = await apiClient.post<CitasRecurrentesResponse>('/citas/recurrentes', payload)
   return data
 }
 

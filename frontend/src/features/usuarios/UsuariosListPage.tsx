@@ -5,8 +5,9 @@ import { useAuthStore } from '../../core/auth-store'
 import { useUsuarios, useMisPermisosAdmin } from './hooks/useUsuarios'
 import { fetchPerfilesAdminEmpresa, patchUsuario, resetUsuarioPassword, updateUsuarioActivo } from './api'
 import { usuariosKeys } from './hooks/useUsuarios'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
 import { Input } from '../../shared/ui/Input'
 import { Modal } from '../../shared/ui/Modal'
 import { Table, TableHead, TableBody, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
@@ -129,11 +130,14 @@ export function UsuariosListPage() {
 
   if (isError) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-900">Usuarios</h1>
-        <Card title="Error">
+      <div className="mx-auto max-w-6xl space-y-6 pb-8">
+        <PageHeader
+          breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Usuarios' }]}
+          title="Usuarios"
+        />
+        <DataListPanel kicker="Error" title="No disponible">
           <p className="text-red-600">No se pudo cargar el listado. Solo administradores pueden acceder.</p>
-        </Card>
+        </DataListPanel>
       </div>
     )
   }
@@ -142,19 +146,23 @@ export function UsuariosListPage() {
   const total = data?.total ?? 0
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Usuarios</h1>
-        {canManageUsers ? (
-          <Link to="/usuarios/nuevo">
-            <Button>Nuevo usuario</Button>
-          </Link>
-        ) : (
-          <span className="text-xs text-slate-500">Sin permiso para crear o editar usuarios</span>
-        )}
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Usuarios' }]}
+        title="Usuarios"
+        subtitle="Cuentas del tenant, roles y perfiles de administrador."
+        actions={
+          canManageUsers ? (
+            <Link to="/usuarios/nuevo">
+              <Button>Nuevo usuario</Button>
+            </Link>
+          ) : (
+            <span className="text-xs text-slate-500">Sin permiso para crear o editar usuarios</span>
+          )
+        }
+      />
 
-      <Card title="Listado">
+      <DataListPanel kicker="Directorio" title="Listado" description="Contraseñas y perfiles solo si tu permiso lo permite.">
         <div className="space-y-4">
           {error && (
             <Alert variant="error" onDismiss={() => setError(null)}>
@@ -168,13 +176,13 @@ export function UsuariosListPage() {
             </Alert>
           ) : null}
           {isLoading ? (
-            <p className="text-gray-500">Cargando...</p>
+            <p className="text-slate-500">Cargando...</p>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <Table>
+              <div>
+                <Table plain>
                   <TableHead>
-                    <TableRow>
+                    <TableRow header>
                       <TableTh>ID</TableTh>
                       <TableTh>Nombre</TableTh>
                       <TableTh>Email</TableTh>
@@ -187,7 +195,7 @@ export function UsuariosListPage() {
                   <TableBody>
                     {items.length === 0 ? (
                       <TableRow>
-                        <td colSpan={7} className="px-4 py-3 text-center text-sm text-gray-500">
+                        <td colSpan={7} className="px-4 py-3 text-center text-sm text-slate-500">
                           No hay usuarios. Crea el primero desde «Nuevo usuario».
                         </td>
                       </TableRow>
@@ -240,6 +248,11 @@ export function UsuariosListPage() {
                                       Perfil
                                     </Button>
                                   ) : null}
+                                  <Link to={`/usuarios/${u.id}/editar`}>
+                                    <Button variant="secondary" className="text-xs">
+                                      Configurar
+                                    </Button>
+                                  </Link>
                                   <Button
                                     variant="secondary"
                                     className="text-xs"
@@ -287,7 +300,7 @@ export function UsuariosListPage() {
             </>
           )}
         </div>
-      </Card>
+      </DataListPanel>
 
       <Modal
         open={!!perfilModal}

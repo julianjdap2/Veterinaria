@@ -6,6 +6,7 @@ import { useCreateVenta, useVentaDetail } from './hooks/useVentas'
 import type { Producto, Venta, VentaItemCreate } from '../../api/types'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
@@ -244,17 +245,17 @@ export function VentaPosPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">
-          POS de ventas {tipoOperacion !== 'venta' ? `(CYD: ${tipoOperacion})` : ''}
-        </h1>
-        <div className="flex gap-2">
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Ventas', to: '/ventas' }, { label: 'POS' }]}
+        title={`POS de ventas${tipoOperacion !== 'venta' ? ` (CYD: ${tipoOperacion})` : ''}`}
+        subtitle="Búsqueda rápida, carrito y cobro."
+        actions={
           <Link to="/ventas">
-            <Button variant="ghost">Volver</Button>
+            <Button variant="ghost">Volver a ventas</Button>
           </Link>
-        </div>
-      </div>
+        }
+      />
 
       <Card
         clip={false}

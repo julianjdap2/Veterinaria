@@ -1,5 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchUsuarios, createUsuario, fetchVeterinarios, fetchMisPermisosAdmin } from '../api'
+import {
+  fetchUsuarios,
+  createUsuario,
+  fetchVeterinarios,
+  fetchMisPermisosAdmin,
+  fetchMiOperativo,
+  fetchUsuarioDetalle,
+  patchUsuario,
+  type UsuarioPatchPayload,
+} from '../api'
 import type { UsuariosFilters } from '../api'
 import type { UsuarioCreate } from '../../../api/types'
 
@@ -27,6 +36,15 @@ export function useMisPermisosAdmin(options?: { enabled?: boolean }) {
   })
 }
 
+export function useMiOperativo(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['usuarios', 'mi-operativo'] as const,
+    queryFn: () => fetchMiOperativo(),
+    enabled: options?.enabled ?? true,
+    staleTime: STALE_PERMISOS_MS,
+  })
+}
+
 export function useCreateUsuario() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -37,11 +55,35 @@ export function useCreateUsuario() {
   })
 }
 
-/** Lista veterinarios (para asignar a citas). Solo ADMIN y RECEPCIÓN pueden llamar al endpoint. */
-export function useVeterinarios(options?: { enabled?: boolean }) {
+export function usuarioDetalleKey(id: number) {
+  return ['usuarios', 'detalle', id] as const
+}
+
+export function useUsuarioDetalle(id: number | undefined, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['usuarios', 'veterinarios'],
-    queryFn: () => fetchVeterinarios(),
+    queryKey: id != null ? usuarioDetalleKey(id) : ['usuarios', 'detalle', 'none'],
+    queryFn: () => fetchUsuarioDetalle(id!),
+    enabled: (options?.enabled ?? true) && id != null,
+  })
+}
+
+export function usePatchUsuario() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: UsuarioPatchPayload }) => patchUsuario(id, payload),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['usuarios'] })
+      queryClient.invalidateQueries({ queryKey: usuarioDetalleKey(id) })
+    },
+  })
+}
+
+/** Lista veterinarios (para asignar a citas). Solo ADMIN y RECEPCIÓN pueden llamar al endpoint. */
+export function useVeterinarios(options?: { enabled?: boolean; soloAgendaPersonal?: boolean }) {
+  const solo = options?.soloAgendaPersonal !== false
+  return useQuery({
+    queryKey: ['usuarios', 'veterinarios', solo] as const,
+    queryFn: () => fetchVeterinarios({ solo_agenda_personal: solo }),
     enabled: options?.enabled ?? true,
     staleTime: STALE_PERMISOS_MS,
   })

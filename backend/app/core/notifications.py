@@ -37,6 +37,7 @@ class NotificationMessage:
     to_email: str | None = None
     attachments: list[Attachment] | None = None
     reply_to: str | None = None
+    body_html: str | None = None
 
 
 class NotificationSender(Protocol):
@@ -62,6 +63,8 @@ class SyncLoggerNotificationSender:
         )
         if getattr(message, "attachments", None) and message.attachments:
             logger.info("  Adjuntos: %s", [a.filename for a in message.attachments])
+        if getattr(message, "body_html", None):
+            logger.info("  (HTML alternativo incluido)")
 
 
 class SMTPNotificationSender:
@@ -93,7 +96,14 @@ class SMTPNotificationSender:
         msg["To"] = message.to_email
         if getattr(message, "reply_to", None) and message.reply_to:
             msg["Reply-To"] = message.reply_to
-        msg.attach(MIMEText(message.body, "plain", "utf-8"))
+        body_html = getattr(message, "body_html", None)
+        if body_html:
+            alt = MIMEMultipart("alternative")
+            alt.attach(MIMEText(message.body, "plain", "utf-8"))
+            alt.attach(MIMEText(body_html, "html", "utf-8"))
+            msg.attach(alt)
+        else:
+            msg.attach(MIMEText(message.body, "plain", "utf-8"))
         if getattr(message, "attachments", None):
             for att in message.attachments:
                 part = MIMEBase("application", "octet-stream")

@@ -51,7 +51,10 @@ class Settings(BaseSettings):
 
     # CORS (orígenes permitidos, separados por coma)
     CORS_ORIGINS: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000",
+        default=(
+            "http://localhost:3000,http://127.0.0.1:3000,"
+            "http://localhost:5173,http://127.0.0.1:5173"
+        ),
         description="Orígenes permitidos para CORS, separados por coma.",
     )
 
@@ -80,8 +83,39 @@ class Settings(BaseSettings):
         description="Indicativo por defecto para números sin '+'.",
     )
 
+    # URL pública del frontend (enlaces en emails, ej. registro / login)
+    FRONTEND_PUBLIC_URL: str = Field(
+        default="http://localhost:5173",
+        description="Origen del SPA para enlaces en correos (sin barra final). Debe ser la URL real en producción.",
+    )
+
+    VINCULO_INVITE_EXPIRE_HOURS: int = Field(
+        default=168,
+        ge=1,
+        le=720,
+        description="Validez del enlace por correo para ampliar vínculo parcial → completo (horas).",
+    )
+
     # Cron: si está definido, POST /cron/* exige header X-Cron-Secret
     CRON_SECRET: str = Field(default="", description="Secret para endpoints cron (header X-Cron-Secret).")
+
+    # LLM (OpenAI-compatible /chat/completions). Opcional: enriquece asistente clínico.
+    LLM_ENABLED: bool = Field(
+        default=False,
+        description="Si true y hay LLM_API_KEY, el asistente añade sugerencias vía modelo (además de reglas locales).",
+    )
+    LLM_API_KEY: str = Field(default="", description="API key del proveedor (Bearer).")
+    LLM_BASE_URL: str = Field(
+        default="https://api.openai.com/v1",
+        description="Base URL del API (sin barra final); se concatena /chat/completions.",
+    )
+    LLM_CHAT_COMPLETIONS_URL: str = Field(
+        default="",
+        description="Si se define, URL completa del POST (Azure u otro); ignora LLM_BASE_URL.",
+    )
+    LLM_MODEL: str = Field(default="gpt-4o-mini", description="Identificador del modelo.")
+    LLM_TIMEOUT_SECONDS: float = Field(default=25.0, ge=5.0, le=120.0)
+    LLM_MAX_LLM_ITEMS: int = Field(default=6, ge=1, le=12, description="Máximo de ítems añadidos por el LLM.")
 
     def validate_production(self) -> None:
         """
@@ -89,7 +123,6 @@ class Settings(BaseSettings):
         Si SECRET_KEY o DATABASE_URL están vacías, lanza ValueError.
         No se valida si la variable de entorno TESTING=1 (pytest).
         """
-        import os
         if os.getenv("TESTING") == "1":
             return
         if not self.SECRET_KEY or self.SECRET_KEY == "change-me":

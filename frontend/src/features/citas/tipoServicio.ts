@@ -31,11 +31,10 @@ export function duracionTipoServicio(
 export function flagsTipoServicio(
   tipoId: string,
   tipos?: TipoServicioCita[] | null,
-): { allowUrgente: boolean; allowRecurrente: boolean } {
+): { allowUrgente: boolean } {
   const t = tipos?.find((x) => x.id === tipoId)
   return {
     allowUrgente: t?.allow_urgente ?? true,
-    allowRecurrente: t?.allow_recurrente ?? true,
   }
 }
 

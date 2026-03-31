@@ -11,8 +11,11 @@ import {
 import { useAuthStore } from '../../core/auth-store'
 import { ROLES } from '../../core/constants'
 import { useMisPermisosAdmin } from '../usuarios/hooks/useUsuarios'
-import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { DataListPanel } from '../../shared/ui/DataListPanel'
+import { Table, TableBody, TableHead, TableRow, TableTh, TableTd } from '../../shared/ui/Table'
+import { SettingsPanel } from '../../shared/ui/SettingsPanel'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
@@ -168,10 +171,14 @@ export function ProductosListPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Inventario</h1>
-        <div className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Inventario' }]}
+        title="Inventario"
+        subtitle="Productos, stock, categorías y carga masiva CSV (si tu perfil lo permite)."
+      />
+
+      <div className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-lg border border-slate-100 bg-slate-50/50 px-4 py-3 sm:flex-wrap sm:overflow-visible">
           <input
             type="text"
             placeholder="Buscar (nombre, EAN, código, fabricante)..."
@@ -224,7 +231,6 @@ export function ProductosListPage() {
           <Link to="/ventas/nueva">
             <Button variant="secondary">Nueva venta</Button>
           </Link>
-        </div>
       </div>
 
       {cargaMasivaResult && (
@@ -253,7 +259,7 @@ export function ProductosListPage() {
       )}
 
       {showForm && (
-        <Card title="Nuevo producto">
+        <SettingsPanel kicker="Alta" title="Nuevo producto" description="Completa los datos básicos; luego podrás editar desde la lista.">
           <form onSubmit={handleSubmitProduct} className="max-w-2xl space-y-4">
             {error && (
               <Alert variant="error" onDismiss={() => setError(null)}>
@@ -397,78 +403,77 @@ export function ProductosListPage() {
               </Button>
             </div>
           </form>
-        </Card>
+        </SettingsPanel>
       )}
 
-      <Card title="Productos">
-        {isLoading && <p className="text-sm text-gray-500">Cargando...</p>}
+      <DataListPanel kicker="Catálogo" title="Productos" description="Listado filtrado; la alerta «Stock bajo» depende del mínimo configurado.">
+        {isLoading && <p className="text-sm text-slate-500">Cargando...</p>}
         {!isLoading && items.length === 0 && (
-          <p className="text-sm text-gray-500">No hay productos. Crea uno o ajusta los filtros.</p>
+          <p className="text-sm text-slate-500">No hay productos. Crea uno o ajusta los filtros.</p>
         )}
         {!isLoading && items.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-600">
-                  <th className="pb-2 pr-4">Nombre</th>
-                  <th className="pb-2 pr-4">Cód. / EAN</th>
-                  <th className="pb-2 pr-4">Categoría</th>
-                  <th className="pb-2 pr-4">Fabricante</th>
-                  <th className="pb-2 pr-4">Presentación</th>
-                  <th className="pb-2 pr-4">Unidad</th>
-                  <th className="pb-2 pr-4">Precio</th>
-                  <th className="pb-2 pr-4">Stock</th>
-                  <th className="pb-2 pr-4">Mín.</th>
-                  <th className="pb-2 pr-4">Estado</th>
-                  <th className="pb-2 pr-4 w-20">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((p) => (
-                  <tr
-                    key={p.id}
-                    className={`border-b border-slate-100 ${p.alerta_stock_bajo ? 'bg-amber-50' : ''}`}
-                  >
-                    <td className="py-2 pr-4 font-medium">
-                      {p.nombre}
-                      {p.alerta_stock_bajo && (
-                        <span className="ml-1.5 rounded bg-amber-200 px-1.5 py-0.5 text-xs font-medium text-amber-900">
-                          Stock bajo
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-4">
-                      {p.cod_articulo || p.ean ? [p.cod_articulo, p.ean].filter(Boolean).join(' / ') : '—'}
-                    </td>
-                    <td className="py-2 pr-4">
-                      {categorias.find((c) => c.id === p.categoria_id)?.nombre ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4">{p.fabricante ?? '—'}</td>
-                    <td className="py-2 pr-4 max-w-[120px] truncate" title={p.presentacion ?? ''}>
-                      {p.presentacion ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4">{p.unidad ?? '—'}</td>
-                    <td className="py-2 pr-4">{p.precio != null ? Number(p.precio).toFixed(2) : '—'}</td>
-                    <td className="py-2 pr-4 font-medium">{p.stock_actual}</td>
-                    <td className="py-2 pr-4">{p.stock_minimo}</td>
-                    <td className="py-2 pr-4">
-                      <span className={p.activo ? 'text-green-600' : 'text-slate-400'}>
-                        {p.activo ? 'Activo' : 'Inactivo'}
+          <Table plain className="min-w-[960px]">
+            <TableHead>
+              <TableRow header>
+                <TableTh>Nombre</TableTh>
+                <TableTh>Cód. / EAN</TableTh>
+                <TableTh>Categoría</TableTh>
+                <TableTh>Fabricante</TableTh>
+                <TableTh>Presentación</TableTh>
+                <TableTh>Unidad</TableTh>
+                <TableTh>Precio</TableTh>
+                <TableTh>Stock</TableTh>
+                <TableTh>Mín.</TableTh>
+                <TableTh>Estado</TableTh>
+                <TableTh className="w-24 text-right">Acciones</TableTh>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {items.map((p) => (
+                <TableRow key={p.id} className={p.alerta_stock_bajo ? 'bg-amber-50/80 hover:bg-amber-50' : ''}>
+                  <TableTd className="max-w-[14rem] font-medium text-slate-900">
+                    {p.nombre}
+                    {p.alerta_stock_bajo ? (
+                      <span className="ml-1.5 inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-950 ring-1 ring-amber-300/80">
+                        Stock bajo
                       </span>
-                    </td>
-                    <td className="py-2 pr-4">
-                      <Link
-                        to={`/productos/${p.id}/editar`}
-                        className="text-primary-600 hover:underline text-sm"
-                      >
-                        Editar
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    ) : null}
+                  </TableTd>
+                  <TableTd className="text-slate-700">
+                    {p.cod_articulo || p.ean ? [p.cod_articulo, p.ean].filter(Boolean).join(' / ') : '—'}
+                  </TableTd>
+                  <TableTd>{categorias.find((c) => c.id === p.categoria_id)?.nombre ?? '—'}</TableTd>
+                  <TableTd className="text-slate-700">{p.fabricante ?? '—'}</TableTd>
+                  <TableTd className="max-w-[120px] truncate text-slate-600" title={p.presentacion ?? ''}>
+                    {p.presentacion ?? '—'}
+                  </TableTd>
+                  <TableTd>{p.unidad ?? '—'}</TableTd>
+                  <TableTd className="tabular-nums font-medium">{p.precio != null ? Number(p.precio).toFixed(2) : '—'}</TableTd>
+                  <TableTd className="font-semibold text-slate-900">{p.stock_actual}</TableTd>
+                  <TableTd className="tabular-nums text-slate-600">{p.stock_minimo}</TableTd>
+                  <TableTd>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${
+                        p.activo
+                          ? 'bg-emerald-100 text-emerald-800 ring-emerald-300/80'
+                          : 'bg-slate-100 text-slate-600 ring-slate-200'
+                      }`}
+                    >
+                      {p.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </TableTd>
+                  <TableTd className="text-right">
+                    <Link
+                      to={`/productos/${p.id}/editar`}
+                      className="inline-flex rounded-lg px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/90 transition hover:bg-emerald-50"
+                    >
+                      Editar
+                    </Link>
+                  </TableTd>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
         {total > pageSize && (
           <div className="mt-3 flex justify-end gap-2 text-sm">
@@ -488,7 +493,7 @@ export function ProductosListPage() {
             </Button>
           </div>
         )}
-      </Card>
+      </DataListPanel>
     </div>
   )
 }

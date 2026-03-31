@@ -5,6 +5,7 @@ import { updateClienteActivo } from './api'
 import { clientesKeys } from './hooks/useClientes'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
@@ -52,12 +53,27 @@ export function ClienteDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link to="/clientes" className="text-primary-600 hover:underline text-sm">
-          ← Volver a clientes
-        </Link>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Clientes', to: '/clientes' }, { label: cliente.nombre }]}
+        title={cliente.nombre}
+        subtitle="Ficha del tutor y datos de contacto."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={`/clientes/${numId}/editar`}>
+              <Button variant="secondary">Editar</Button>
+            </Link>
+            {!cliente.activo && (
+              <Button variant="primary" loading={reactivating} onClick={handleReactivar}>
+                Reactivar cliente
+              </Button>
+            )}
+            <Link to="/clientes">
+              <Button variant="ghost">Listado</Button>
+            </Link>
+          </div>
+        }
+      />
       {!cliente.activo && (
         <Alert variant="warning">
           Este cliente está inactivo. No aparecerá en el listado por defecto. Puedes reactivarlo para volver a usarlo.
@@ -68,28 +84,7 @@ export function ClienteDetailPage() {
           {error}
         </Alert>
       )}
-      <Card
-        title={cliente.nombre}
-        actions={
-          <div className="flex items-center gap-2">
-            <Link to={`/clientes/${numId}/editar`}>
-              <Button variant="secondary">Editar</Button>
-            </Link>
-            {!cliente.activo && (
-              <Button
-                variant="primary"
-                loading={reactivating}
-                onClick={handleReactivar}
-              >
-                Reactivar cliente
-              </Button>
-            )}
-            <Link to="/clientes">
-              <Button variant="secondary">Listado</Button>
-            </Link>
-          </div>
-        }
-      >
+      <Card title="Datos de contacto">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <dt className="text-sm font-medium text-gray-500">Documento</dt>

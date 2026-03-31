@@ -2,6 +2,8 @@ import { Link, useParams, useLocation } from 'react-router-dom'
 import { useVentaDetail } from './hooks/useVentas'
 import { formatVentaFecha } from './formatVentaFecha'
 import { Card } from '../../shared/ui/Card'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { Table, TableBody, TableHead, TableRow, TableTd, TableTh } from '../../shared/ui/Table'
 
 export function VentaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -26,29 +28,33 @@ export function VentaDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Link to={backTo} className="text-primary-600 hover:underline text-sm">
-        ← Volver
-      </Link>
-      <h1 className="text-2xl font-bold text-gray-900">
-        {venta.codigo_interno ?? 'Venta'}
-      </h1>
-      <div className="flex gap-2">
-        <Link
-          to="/ventas/pos"
-          state={{ ventaOrigenId: venta.id, tipoOperacion: 'cambio' }}
-          className="text-amber-700 hover:underline text-sm"
-        >
-          Iniciar cambio (CYD)
-        </Link>
-        <Link
-          to="/ventas/pos"
-          state={{ ventaOrigenId: venta.id, tipoOperacion: 'devolucion' }}
-          className="text-red-700 hover:underline text-sm"
-        >
-          Iniciar devolucion (CYD)
-        </Link>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Ventas', to: '/ventas' }, { label: venta.codigo_interno ?? `Venta #${venta.id}` }]}
+        title={venta.codigo_interno ?? 'Venta'}
+        subtitle="Detalle interno y enlaces a cambio o devolución."
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            <Link to={backTo} className="text-sm font-medium text-primary-600 hover:text-primary-800">
+              ← Volver
+            </Link>
+            <Link
+              to="/ventas/pos"
+              state={{ ventaOrigenId: venta.id, tipoOperacion: 'cambio' }}
+              className="text-sm font-medium text-amber-800 hover:underline"
+            >
+              Cambio (CYD)
+            </Link>
+            <Link
+              to="/ventas/pos"
+              state={{ ventaOrigenId: venta.id, tipoOperacion: 'devolucion' }}
+              className="text-sm font-medium text-red-700 hover:underline"
+            >
+              Devolución (CYD)
+            </Link>
+          </div>
+        }
+      />
       <Card title="Detalle">
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
@@ -79,26 +85,30 @@ export function VentaDetailPage() {
           )}
         </dl>
         <h3 className="mt-4 font-medium text-slate-700">Items</h3>
-        <table className="mt-2 w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-slate-600">
-              <th className="pb-1 pr-4">Producto ID</th>
-              <th className="pb-1 pr-4">Cantidad</th>
-              <th className="pb-1 pr-4">P. unit.</th>
-              <th className="pb-1">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(venta.items ?? []).map((it) => (
-              <tr key={it.id} className="border-b border-slate-100">
-                <td className="py-1 pr-4">{it.producto_id}</td>
-                <td className="py-1 pr-4">{it.cantidad}</td>
-                <td className="py-1 pr-4">{Number(it.precio_unitario).toFixed(2)}</td>
-                <td className="py-1">{((it.cantidad || 0) * Number(it.precio_unitario)).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="mt-2">
+          <Table plain className="w-full text-sm">
+            <TableHead>
+              <TableRow header>
+                <TableTh className="!pb-1 !pr-4">Producto ID</TableTh>
+                <TableTh className="!pb-1 !pr-4">Cantidad</TableTh>
+                <TableTh className="!pb-1 !pr-4">P. unit.</TableTh>
+                <TableTh className="!pb-1">Subtotal</TableTh>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(venta.items ?? []).map((it) => (
+                <TableRow key={it.id}>
+                  <TableTd className="!py-1 !pr-4">{it.producto_id}</TableTd>
+                  <TableTd className="!py-1 !pr-4">{it.cantidad}</TableTd>
+                  <TableTd className="!py-1 !pr-4">{Number(it.precio_unitario).toFixed(2)}</TableTd>
+                  <TableTd className="!py-1">
+                    {((it.cantidad || 0) * Number(it.precio_unitario)).toFixed(2)}
+                  </TableTd>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
     </div>
   )

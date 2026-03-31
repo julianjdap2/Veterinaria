@@ -7,9 +7,9 @@ Endpoints del módulo Mascotas.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.errors import ApiError
 from app.database.database import get_db
-from app.security.dependencies import get_current_user
-from app.security.roles import require_roles
+from app.security.usuario_operativo import require_mascotas_read_user, require_mascotas_write_user
 from app.schemas.mascota_schema import MascotaCreate, MascotaResponse, MascotaUpdate
 from app.schemas.common_schema import PaginatedResponse
 from app.services.mascota_service import (
@@ -17,6 +17,7 @@ from app.services.mascota_service import (
     listar_mascotas_por_empresa,
     obtener_mascota_por_empresa,
     actualizar_activo_mascota_service,
+    actualizar_mascota_datos_service,
     eliminar_mascota_por_empresa,
     mascotas_a_response_con_cliente_nombre,
     mascota_a_response_con_cliente_nombre,
@@ -29,7 +30,7 @@ router = APIRouter(prefix="/mascotas", tags=["Mascotas"])
 def crear_mascota_endpoint(
     mascota: MascotaCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(1, 2, 3)),  # ADMIN, VETERINARIO, RECEPCION
+    current_user=Depends(require_mascotas_write_user),
 ):
     data = mascota.model_dump()  # Pydantic v2
     data["empresa_id"] = current_user.empresa_id
@@ -46,7 +47,7 @@ def listar_mascotas(
     busqueda: str | None = None,
     incluir_inactivos: bool = False,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_mascotas_read_user),
 ):
     """Si `busqueda` tiene valor, filtra por nombre de mascota, nombre de cliente o documento (OR)."""
     items, total = listar_mascotas_por_empresa(
@@ -67,7 +68,7 @@ def listar_mascotas(
 def obtener_mascota(
     mascota_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_mascotas_read_user),
 ):
     m = obtener_mascota_por_empresa(
         db=db,
@@ -82,21 +83,37 @@ def actualizar_mascota(
     mascota_id: int,
     payload: MascotaUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(1, 2, 3)),  # ADMIN, VETERINARIO, RECEPCION
+    current_user=Depends(require_mascotas_write_user),
 ):
-    """Permite reactivar (activo=true) o desactivar (activo=false) la mascota."""
-    if payload.activo is None:
+    """PATCH parcial: nombre, especie, raza, peso, activo, etc."""
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
         m = obtener_mascota_por_empresa(
             db=db,
             mascota_id=mascota_id,
             empresa_id=current_user.empresa_id,
+            incluir_inactivas=True,
+        )
+        if not m:
+            raise ApiError(
+                code="mascota_not_found",
+                message="Mascota no encontrada",
+                status_code=404,
+            )
+        return mascota_a_response_con_cliente_nombre(db, m)
+    if set(data.keys()) == {"activo"}:
+        m = actualizar_activo_mascota_service(
+            db=db,
+            mascota_id=mascota_id,
+            empresa_id=current_user.empresa_id,
+            activo=data["activo"],
         )
         return mascota_a_response_con_cliente_nombre(db, m)
-    m = actualizar_activo_mascota_service(
+    m = actualizar_mascota_datos_service(
         db=db,
         mascota_id=mascota_id,
         empresa_id=current_user.empresa_id,
-        activo=payload.activo,
+        campos=data,
     )
     return mascota_a_response_con_cliente_nombre(db, m)
 
@@ -105,7 +122,7 @@ def actualizar_mascota(
 def eliminar_mascota(
     mascota_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user=Depends(require_mascotas_write_user),
 ):
     m = eliminar_mascota_por_empresa(
         db=db,

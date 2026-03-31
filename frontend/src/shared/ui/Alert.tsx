@@ -6,9 +6,9 @@ interface AlertProps {
 }
 
 const variantClasses = {
-  info: 'bg-primary-50 text-primary-900 border-primary-200',
-  success: 'bg-primary-100 text-primary-900 border-primary-200',
-  warning: 'bg-accent-50 text-accent-900 border-accent-200',
+  info: 'bg-emerald-50 text-emerald-950 border-emerald-200/90',
+  success: 'bg-teal-50 text-teal-950 border-teal-200/90',
+  warning: 'bg-amber-50 text-amber-950 border-amber-200',
   error: 'bg-red-50 text-red-900 border-red-200',
 }
 

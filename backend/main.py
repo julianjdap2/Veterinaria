@@ -22,6 +22,12 @@ from app.models import (  # noqa: F401
     Rol,
     Usuario,
     Cliente,
+    ClienteEmpresaVinculo,
+    ClienteVinculoInvitacion,
+    PlanAfiliacion,
+    PlanAfiliacionUso,
+    PlanSalud,
+    PlanSaludCobertura,
     Mascota,
     Consulta,
     Cita,
@@ -49,6 +55,10 @@ from app.routers import dashboard_router
 from app.routers import superadmin_router
 from app.routers import empresa_operacion_router
 from app.routers import empresa_notificaciones_router
+from app.routers import plan_salud_router
+from app.routers import empresa_suscripcion_router
+from app.routers import variables_clinicas_router
+from app.routers import public_router
 from app.utils.audit_events import register_model_events
 from app.core.exception_handlers import (
     api_error_handler,
@@ -81,15 +91,23 @@ API REST para gestión de veterinarias (multi-tenant por empresa).
 
 ## Módulos principales
 - **Auth**: login y JWT.
-- **Usuarios**: CRUD por empresa (admin).
+- **Usuarios**: CRUD por empresa.
 - **Clientes**: dueños de mascotas (listado paginado, creación).
 - **Mascotas**: CRUD por empresa con paginación.
-- **Consultas**: historial clínico por mascota (veterinario).
+- **Consultas**: historial clínico por mascota.
 - **Citas**: agenda por empresa y por mascota.
+- **Catálogo**: especies, razas y auxiliares.
+- **Productos**: inventario y catálogo por empresa.
+- **Ventas**: POS y listados.
+- **Dashboard**: métricas del panel.
+- **Auditoría**: registros por empresa (roles autorizados).
+- **Empresa**: configuración operativa y notificaciones por tenant.
+- **Superadmin**: empresas y planes (rol SUPERADMIN).
+- **Público**: datos mínimos para marketing (`GET /public/clinicas`).
 
 ## Seguridad
-- Autenticación JWT en todos los endpoints excepto `/auth/login` y `/`.
-- Roles: ADMIN (1), VETERINARIO (2), RECEPCIÓN (3).
+- Autenticación JWT en todos los endpoints excepto `/auth/login`, `/health` y `/`.
+- Roles: ADMIN (1), VETERINARIO (2), RECEPCIÓN (3), SUPERADMIN (4).
 - Respuestas de error estandarizadas con `request_id` para trazabilidad.
     """,
     version="1.0.0",
@@ -125,6 +143,7 @@ app.add_exception_handler(ApiError, api_error_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 # Routers HTTP (capa de presentación)
+app.include_router(public_router.router)
 app.include_router(auth_router)
 app.include_router(usuarios_router.router)
 app.include_router(clientes_router.router)
@@ -140,6 +159,9 @@ app.include_router(dashboard_router.router)
 app.include_router(superadmin_router.router)
 app.include_router(empresa_operacion_router.router)
 app.include_router(empresa_notificaciones_router.router)
+app.include_router(plan_salud_router.router)
+app.include_router(empresa_suscripcion_router.router)
+app.include_router(variables_clinicas_router.router)
 
 
 @app.get(

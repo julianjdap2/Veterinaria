@@ -16,12 +16,18 @@ from app.models.empresa_perfil_admin import EmpresaPerfilAdmin
 from app.security.password import hash_password
 from app.repositories.usuario_repository import (
     get_user_by_email,
+    get_user_by_email_excluding_id,
     count_users_by_empresa,
+    count_active_admins_empresa,
     get_usuario_by_id_and_empresa,
     update_usuario_activo as repo_update_usuario_activo,
     update_usuario_password_hash,
 )
 from app.core.errors import ApiError
+from app.schemas.usuario_schema import UsuarioDetalleResponse
+from app.services.usuario_extendido import apply_extendido_patch_dict, parse_extendido_json, serialize_extendido
+
+_ROLES_EMPRESA = frozenset({1, 2, 3})
 
 
 def _obtener_empresa_y_plan(db: Session, empresa_id: int) -> tuple[Empresa, Plan]:
@@ -154,14 +160,89 @@ def cambiar_password_usuario_por_admin(
     return updated
 
 
+def _assert_usuario_editable_por_empresa(usuario: Usuario) -> None:
+    if usuario.rol_id == 4:
+        raise ApiError(
+            code="cannot_edit_superadmin",
+            message="No se puede editar un usuario superadmin desde la empresa",
+            status_code=403,
+        )
+
+
+def usuario_a_detalle(usuario: Usuario) -> UsuarioDetalleResponse:
+    ext = parse_extendido_json(usuario.extendido_json)
+    return UsuarioDetalleResponse(
+        id=usuario.id,
+        empresa_id=usuario.empresa_id,
+        activo=usuario.activo,
+        created_at=usuario.created_at,
+        nombre=usuario.nombre,
+        email=usuario.email,
+        rol_id=usuario.rol_id,
+        perfil_admin_id=usuario.perfil_admin_id,
+        documento=usuario.documento,
+        telefono=usuario.telefono,
+        extendido=ext,
+    )
+
+
 def patch_usuario_por_admin(
     db: Session,
     usuario: Usuario,
     updates: dict,
 ) -> Usuario:
     """Actualiza campos permitidos según dict (solo claves presentes)."""
+    _assert_usuario_editable_por_empresa(usuario)
+
+    if "nombre" in updates and updates["nombre"] is not None:
+        usuario.nombre = str(updates["nombre"]).strip()
+
+    if "email" in updates and updates["email"] is not None:
+        email = str(updates["email"]).strip().lower()
+        if get_user_by_email_excluding_id(db, email, usuario.id) is not None:
+            raise ApiError(
+                code="email_already_registered",
+                message="Email ya registrado",
+                status_code=400,
+            )
+        usuario.email = email
+
+    if "documento" in updates:
+        usuario.documento = (str(updates["documento"]).strip() or None) if updates["documento"] is not None else None
+
+    if "telefono" in updates:
+        usuario.telefono = (str(updates["telefono"]).strip() or None) if updates["telefono"] is not None else None
+
+    if "rol_id" in updates and updates["rol_id"] is not None:
+        new_r = int(updates["rol_id"])
+        if new_r not in _ROLES_EMPRESA:
+            raise ApiError(
+                code="rol_invalido",
+                message="Rol no permitido para usuarios de empresa",
+                status_code=400,
+            )
+        if usuario.rol_id == 1 and new_r != 1:
+            if count_active_admins_empresa(db, usuario.empresa_id, exclude_user_id=usuario.id) < 1:
+                raise ApiError(
+                    code="last_admin_required",
+                    message="Debe existir al menos un administrador activo en la empresa",
+                    status_code=400,
+                )
+        usuario.rol_id = new_r
+        if new_r != 1:
+            usuario.perfil_admin_id = None
+
     if "activo" in updates and updates["activo"] is not None:
-        usuario.activo = bool(updates["activo"])
+        new_act = bool(updates["activo"])
+        if not new_act and usuario.rol_id == 1 and usuario.activo is True:
+            if count_active_admins_empresa(db, usuario.empresa_id, exclude_user_id=usuario.id) < 1:
+                raise ApiError(
+                    code="last_admin_required",
+                    message="Debe existir al menos un administrador activo en la empresa",
+                    status_code=400,
+                )
+        usuario.activo = new_act
+
     if "perfil_admin_id" in updates:
         pid = updates["perfil_admin_id"]
         if pid is not None:
@@ -188,6 +269,14 @@ def patch_usuario_por_admin(
             usuario.perfil_admin_id = int(pid)
         else:
             usuario.perfil_admin_id = None
+
+    if "extendido" in updates and updates["extendido"]:
+        ext_patch = updates["extendido"]
+        if isinstance(ext_patch, dict) and ext_patch:
+            cur = parse_extendido_json(usuario.extendido_json)
+            merged = apply_extendido_patch_dict(cur, ext_patch)
+            usuario.extendido_json = serialize_extendido(merged)
+
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
@@ -201,11 +290,26 @@ def actualizar_activo_usuario(
     activo: bool,
 ) -> Usuario:
     """Activa o desactiva un usuario de la empresa. Lanza ApiError si no existe."""
-    usuario = repo_update_usuario_activo(db, usuario_id, empresa_id, activo)
+    usuario = get_usuario_by_id_and_empresa(db, usuario_id, empresa_id)
     if not usuario:
         raise ApiError(
             code="usuario_not_found",
             message="Usuario no encontrado",
             status_code=404,
         )
-    return usuario
+    _assert_usuario_editable_por_empresa(usuario)
+    if not activo and usuario.rol_id == 1 and usuario.activo is True:
+        if count_active_admins_empresa(db, empresa_id, exclude_user_id=usuario_id) < 1:
+            raise ApiError(
+                code="last_admin_required",
+                message="Debe existir al menos un administrador activo en la empresa",
+                status_code=400,
+            )
+    updated = repo_update_usuario_activo(db, usuario_id, empresa_id, activo)
+    if not updated:
+        raise ApiError(
+            code="usuario_not_found",
+            message="Usuario no encontrado",
+            status_code=404,
+        )
+    return updated

@@ -1,26 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import type { Mascota } from '../../api/types'
 import { MascotaSearchSelect } from '../mascotas/components/MascotaSearchSelect'
 import { useMotivosConsulta } from '../catalogo/hooks/useMotivosConsulta'
-import { useProductos } from '../productos/hooks/useProductos'
 import { createConsultaConFormula } from './api'
+import { useVariablesClinicas } from '../empresa/hooks/useVariablesClinicas'
+import { RegistroFormulaMedicaModal } from './components/RegistroFormulaMedicaModal'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
 import { ApiError } from '../../api/errors'
-import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
-
-type FormulaDraft = {
-  producto_id: number
-  presentacion: string
-  observacion: string
-  cantidad: number
-  unidad?: string
-  producto_nombre?: string
-}
 
 export function ConsultaCreatePage() {
   const navigate = useNavigate()
@@ -42,41 +35,22 @@ export function ConsultaCreatePage() {
   const [observaciones, setObservaciones] = useState('')
   const [fechaConsulta, setFechaConsulta] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [formulaItems, setFormulaItems] = useState<FormulaDraft[]>([])
-  const [formulaForm, setFormulaForm] = useState<FormulaDraft>({
-    producto_id: 0,
-    presentacion: '',
-    observacion: '',
-    cantidad: 1,
-    unidad: undefined,
-  })
   const [saving, setSaving] = useState(false)
-  const [prodSearch, setProdSearch] = useState('')
-  const [showProdResults, setShowProdResults] = useState(false)
-  const prodSearchRef = useRef<HTMLDivElement>(null)
+  const [hospitalizacionId, setHospitalizacionId] = useState('')
+  const [vacunaIds, setVacunaIds] = useState<string[]>([])
+  const [pruebasLabIds, setPruebasLabIds] = useState<string[]>([])
+  const [formatoDocumentoId, setFormatoDocumentoId] = useState('')
+  const [formulaModal, setFormulaModal] = useState<{
+    consultaId: number
+    mascotaId: number
+    mascotaNombre: string
+    diagnostico: string
+    observaciones: string
+    fechaConsultaIso: string | null
+  } | null>(null)
 
   const { data: motivosList = [] } = useMotivosConsulta()
-  const debouncedProd = useDebouncedValue(prodSearch.trim(), 300)
-  const { data: productosData, isLoading: searchingProductos } = useProductos(
-    {
-      page: 1,
-      page_size: 25,
-      search: debouncedProd.length >= 2 ? debouncedProd : undefined,
-      incluir_inactivos: false,
-    },
-    { enabled: debouncedProd.length >= 2 },
-  )
-  const productosResultados = productosData?.items ?? []
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (prodSearchRef.current && !prodSearchRef.current.contains(event.target as Node)) {
-        setShowProdResults(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  const { data: variablesClinicas } = useVariablesClinicas()
 
   useEffect(() => {
     if (!motivoFromState || motivosList.length === 0) return
@@ -84,38 +58,6 @@ export function ConsultaCreatePage() {
     setMotivoPredefinido(inList ? motivoFromState : 'otro')
     setMotivoOtro(inList ? '' : motivoFromState)
   }, [motivoFromState, motivosList])
-
-  function addFormulaRow() {
-    if (!formulaForm.producto_id) return
-    const p =
-      productosResultados.find((x) => x.id === formulaForm.producto_id) ??
-      ({ id: formulaForm.producto_id, nombre: formulaForm.producto_nombre } as {
-        id: number
-        nombre: string
-        presentacion?: string | null
-        unidad?: string | null
-      })
-    setFormulaItems((prev) => [
-      ...prev,
-      {
-        ...formulaForm,
-        producto_nombre: p?.nombre,
-        presentacion: formulaForm.presentacion || p?.presentacion || '',
-        unidad: p?.unidad ?? formulaForm.unidad,
-      },
-    ])
-    setFormulaForm({
-      producto_id: 0,
-      presentacion: '',
-      observacion: '',
-      cantidad: 1,
-      unidad: undefined,
-    })
-  }
-
-  function removeFormulaRow(index: number) {
-    setFormulaItems((prev) => prev.filter((_, i) => i !== index))
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -130,49 +72,36 @@ export function ConsultaCreatePage() {
       motivoPredefinido === 'otro' ? motivoOtro.trim() : (motivoPredefinido || undefined)
     setSaving(true)
     try {
-      // Si el usuario seleccionó un medicamento pero no presionó "Añadir",
-      // todavía debemos persistir al menos 1 ítem para que aparezca en el detalle.
-      const effectiveFormulaItems: FormulaDraft[] = [...formulaItems]
-      if (
-        effectiveFormulaItems.length === 0 &&
-        formulaForm.producto_id &&
-        formulaForm.producto_id > 0
-      ) {
-        const p =
-          productosResultados.find((x) => x.id === formulaForm.producto_id) ??
-          ({ id: formulaForm.producto_id, nombre: formulaForm.producto_nombre } as {
-            id: number
-            nombre?: string
-            presentacion?: string | null
-            unidad?: string | null
-          })
-        effectiveFormulaItems.push({
-          ...formulaForm,
-          producto_nombre: p?.nombre,
-          presentacion: formulaForm.presentacion || p?.presentacion || '',
-          unidad: p?.unidad ?? formulaForm.unidad,
-        })
-      }
-
-      const formula_items = effectiveFormulaItems.map((item) => ({
-        producto_id: item.producto_id,
-        presentacion: item.presentacion || undefined,
-        observacion: item.observacion || undefined,
-        cantidad: item.cantidad || 1,
-      }))
+      const fechaIso = fechaConsulta ? `${fechaConsulta}T12:00:00` : undefined
       const data = await createConsultaConFormula({
         mascota_id: mId,
         motivo_consulta: motivoFinal,
         diagnostico: diagnostico.trim() || undefined,
         tratamiento: tratamiento.trim() || undefined,
         observaciones: observaciones.trim() || undefined,
-        fecha_consulta: fechaConsulta ? `${fechaConsulta}T12:00:00` : undefined,
+        fecha_consulta: fechaIso,
         cita_id: citaIdFromState ?? undefined,
-        formula_items,
+        extras_clinicos: {
+          hospitalizacion_id: hospitalizacionId || undefined,
+          vacuna_ids: vacunaIds,
+          pruebas_lab_ids: pruebasLabIds,
+          formato_documento_id: formatoDocumentoId || undefined,
+        },
+        formula_items: [],
       })
       queryClient.invalidateQueries({ queryKey: ['consultas', 'mascota', data.mascota_id] })
       toast.success('Consulta registrada correctamente')
-      navigate(`/mascotas/${data.mascota_id}`)
+      const mascotaNombre =
+        (queryClient.getQueryData(['mascotas', 'detail', mId]) as Mascota | undefined)?.nombre ??
+        `Mascota #${mId}`
+      setFormulaModal({
+        consultaId: data.id,
+        mascotaId: data.mascota_id,
+        mascotaNombre,
+        diagnostico: diagnostico.trim(),
+        observaciones: observaciones.trim(),
+        fechaConsultaIso: data.fecha_consulta ?? fechaIso ?? null,
+      })
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Error al crear consulta.'
       setError(msg)
@@ -182,19 +111,29 @@ export function ConsultaCreatePage() {
     }
   }
 
+  function closeFormulaModalAndLeave() {
+    const mId = formulaModal?.mascotaId
+    setFormulaModal(null)
+    if (mId != null) navigate(`/mascotas/${mId}`)
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Nueva consulta (historial clínico)</h1>
-        {citaIdFromState != null && (
-          <Link
-            to={`/citas/${citaIdFromState}`}
-            className="text-sm text-primary-600 hover:underline"
-          >
-            ← Volver a la cita
-          </Link>
-        )}
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inicio', to: '/dashboard' }, { label: 'Nueva consulta' }]}
+        title="Nueva consulta"
+        subtitle="Historial clínico: motivo, diagnóstico y datos clínicos. La fórmula médica se registra al guardar."
+        actions={
+          citaIdFromState != null ? (
+            <Link
+              to={`/citas/${citaIdFromState}`}
+              className="text-sm font-medium text-primary-600 hover:text-primary-800"
+            >
+              ← Volver a la cita
+            </Link>
+          ) : undefined
+        }
+      />
       <Card title="Datos de la consulta">
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-4">
           {error && (
@@ -210,7 +149,7 @@ export function ConsultaCreatePage() {
               <MascotaSearchSelect
                 value={mascotaId}
                 onChange={setMascotaId}
-                disabled={saving || !!mascotaIdFromState}
+                disabled={saving || !!mascotaIdFromState || formulaModal != null}
               />
             </div>
             <Input
@@ -218,7 +157,7 @@ export function ConsultaCreatePage() {
               label="Fecha de consulta"
               value={fechaConsulta}
               onChange={(e) => setFechaConsulta(e.target.value)}
-              disabled={saving}
+              disabled={saving || formulaModal != null}
             />
           </div>
           <div>
@@ -228,7 +167,7 @@ export function ConsultaCreatePage() {
             <select
               value={motivoPredefinido}
               onChange={(e) => setMotivoPredefinido(e.target.value)}
-              disabled={saving}
+              disabled={saving || formulaModal != null}
               className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
             >
               <option value="">Seleccionar motivo</option>
@@ -245,7 +184,7 @@ export function ConsultaCreatePage() {
                 value={motivoOtro}
                 onChange={(e) => setMotivoOtro(e.target.value)}
                 placeholder="Indique el motivo..."
-                disabled={saving}
+                disabled={saving || formulaModal != null}
               />
             )}
           </div>
@@ -257,7 +196,7 @@ export function ConsultaCreatePage() {
                 onChange={(e) => setDiagnostico(e.target.value)}
                 rows={3}
                 placeholder="Diagnóstico"
-                disabled={saving}
+                disabled={saving || formulaModal != null}
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
               />
             </div>
@@ -268,7 +207,7 @@ export function ConsultaCreatePage() {
                 onChange={(e) => setTratamiento(e.target.value)}
                 rows={3}
                 placeholder="Tratamiento indicado"
-                disabled={saving}
+                disabled={saving || formulaModal != null}
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
               />
             </div>
@@ -280,195 +219,105 @@ export function ConsultaCreatePage() {
               onChange={(e) => setObservaciones(e.target.value)}
               rows={2}
               placeholder="Notas adicionales"
-              disabled={saving}
+              disabled={saving || formulaModal != null}
               className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
             />
           </div>
-
-          <div className="border-t border-slate-200 pt-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">Medicamentos a recetar</h3>
-            <p className="mb-3 text-sm text-slate-600">
-              Añade los medicamentos que prescribirás en esta consulta. Aparecerán en el resumen/PDF y el recepcionista podrá registrar la venta desde la consulta.
-            </p>
-            <div className="mb-3 rounded-xl bg-slate-50 p-3 space-y-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div ref={prodSearchRef} className="sm:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-slate-600">
-                    Medicamento (buscar por nombre, código o EAN)
-                  </label>
-                  <input
-                    type="text"
-                    value={prodSearch}
-                    onChange={(e) => {
-                      setProdSearch(e.target.value)
-                      setShowProdResults(true)
-                    }}
-                    onFocus={() => debouncedProd.length >= 2 && setShowProdResults(true)}
-                    placeholder="Mín. 2 caracteres…"
-                    disabled={saving}
-                    autoComplete="off"
-                    className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
-                  />
-                  {formulaForm.producto_id > 0 && (
-                    <p className="mt-1 text-xs text-slate-600">
-                      Seleccionado:{' '}
-                      <strong>{formulaForm.producto_nombre ?? `#${formulaForm.producto_id}`}</strong>
-                      <button
-                        type="button"
-                        className="ml-2 text-primary-600 hover:underline"
-                        onClick={() => {
-                          setFormulaForm((f) => ({
-                            ...f,
-                            producto_id: 0,
-                            producto_nombre: undefined,
-                            presentacion: '',
-                            unidad: undefined,
-                          }))
-                          setProdSearch('')
-                        }}
-                      >
-                        Quitar
-                      </button>
-                    </p>
-                  )}
-                  {showProdResults && debouncedProd.length >= 2 && (
-                    <div className="relative z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white shadow-md">
-                      {searchingProductos && (
-                        <p className="px-3 py-2 text-sm text-slate-500">Buscando…</p>
-                      )}
-                      {!searchingProductos && productosResultados.length === 0 && (
-                        <p className="px-3 py-2 text-sm text-slate-500">Sin resultados.</p>
-                      )}
-                      {!searchingProductos &&
-                        productosResultados.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="block w-full px-3 py-2 text-left text-sm hover:bg-primary-50"
-                            onClick={() => {
-                              setFormulaForm((f) => ({
-                                ...f,
-                                producto_id: p.id,
-                                producto_nombre: p.nombre,
-                                presentacion: p.presentacion ?? '',
-                                unidad: p.unidad ?? undefined,
-                              }))
-                              setProdSearch('')
-                              setShowProdResults(false)
-                            }}
-                          >
-                            <span className="font-medium text-slate-900">{p.nombre}</span>
-                            {p.presentacion ? (
-                              <span className="ml-2 text-xs text-slate-500">{p.presentacion}</span>
-                            ) : null}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Presentación</label>
-                  <input
-                    type="text"
-                    placeholder="Ej. 100mg x 30 comp"
-                    value={formulaForm.presentacion ?? ''}
-                    onChange={(e) => setFormulaForm((f) => ({ ...f, presentacion: e.target.value }))}
-                    disabled={saving}
-                    className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Cantidad</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={formulaForm.cantidad ?? 1}
-                    onChange={(e) =>
-                      setFormulaForm((f) => ({ ...f, cantidad: parseInt(e.target.value, 10) || 1 }))
-                    }
-                    disabled={saving}
-                    className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={addFormulaRow}
-                    disabled={saving || !formulaForm.producto_id}
-                  >
-                    Añadir
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Observación (cómo aplicar)</label>
-                <input
-                  type="text"
-                  placeholder="Ej. 1 comprimido cada 12 h por 7 días"
-                  value={formulaForm.observacion ?? ''}
-                  onChange={(e) => setFormulaForm((f) => ({ ...f, observacion: e.target.value }))}
-                  disabled={saving}
-                  className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
-                />
-              </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Hospitalización / ingreso</label>
+              <select
+                value={hospitalizacionId}
+                onChange={(e) => setHospitalizacionId(e.target.value)}
+                disabled={saving || formulaModal != null}
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                <option value="">No aplica</option>
+                {(variablesClinicas?.hospitalizacion ?? []).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
-            {formulaItems.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
-                      <th className="px-3 py-2">Medicamento</th>
-                      <th className="px-3 py-2">Presentación</th>
-                      <th className="px-3 py-2 w-28">Unidad</th>
-                      <th className="px-3 py-2 w-20">Cant.</th>
-                      <th className="px-3 py-2">Observación</th>
-                      <th className="w-14 px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formulaItems.map((row, idx) => (
-                      <tr key={idx} className="border-b border-slate-100">
-                        <td className="px-3 py-2 font-medium">{row.producto_nombre ?? '—'}</td>
-                        <td className="px-3 py-2">{row.presentacion ?? '—'}</td>
-                        <td className="px-3 py-2">{row.unidad ?? '—'}</td>
-                        <td className="px-3 py-2">{row.cantidad}</td>
-                        <td className="px-3 py-2 max-w-[180px] truncate" title={row.observacion ?? ''}>
-                          {row.observacion ?? '—'}
-                        </td>
-                        <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            onClick={() => removeFormulaRow(idx)}
-                            disabled={saving}
-                            className="text-red-600 hover:underline text-xs"
-                          >
-                            Quitar
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Formato de documento</label>
+              <select
+                value={formatoDocumentoId}
+                onChange={(e) => setFormatoDocumentoId(e.target.value)}
+                disabled={saving || formulaModal != null}
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                <option value="">Sin formato</option>
+                {(variablesClinicas?.formatos_documento ?? []).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Vacunas (múltiple)</label>
+              <select
+                multiple
+                value={vacunaIds}
+                onChange={(e) => setVacunaIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                disabled={saving || formulaModal != null}
+                className="min-h-28 w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                {(variablesClinicas?.vacunas ?? []).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Pruebas de laboratorio</label>
+              <select
+                multiple
+                value={pruebasLabIds}
+                onChange={(e) => setPruebasLabIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                disabled={saving || formulaModal != null}
+                className="min-h-28 w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/60 disabled:bg-slate-50"
+              >
+                {(variablesClinicas?.pruebas_laboratorio ?? []).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex gap-2 pt-1">
-            <Button type="submit" loading={saving}>
+            <Button type="submit" loading={saving} disabled={formulaModal != null}>
               Guardar consulta
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => navigate(-1)}
-              disabled={saving}
+              disabled={saving || formulaModal != null}
             >
               Cancelar
             </Button>
           </div>
         </form>
       </Card>
+
+      {formulaModal != null && (
+        <RegistroFormulaMedicaModal
+          open
+          onClose={closeFormulaModalAndLeave}
+          consultaId={formulaModal.consultaId}
+          mascotaId={formulaModal.mascotaId}
+          mascotaNombre={formulaModal.mascotaNombre}
+          diagnosticoInicial={formulaModal.diagnostico}
+          observacionesInicial={formulaModal.observaciones}
+          fechaConsultaIso={formulaModal.fechaConsultaIso}
+        />
+      )}
     </div>
   )
 }

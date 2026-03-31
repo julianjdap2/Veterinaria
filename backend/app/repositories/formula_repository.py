@@ -6,10 +6,12 @@ from app.models.consulta import Consulta
 from app.models.cita import Cita
 from app.models.mascota import Mascota
 
+from app.repositories.empresa_mascota_access import join_mascota_accesible_por_empresa
+
 
 def listar_por_consulta(db: Session, consulta_id: int, empresa_id: int) -> List[FormulaItem]:
-    """Lista ítems de fórmula de una consulta (verificando empresa vía mascota)."""
-    return (
+    """Lista ítems de fórmula de una consulta (verificando acceso vía vínculo)."""
+    q = (
         db.query(FormulaItem)
         .options(joinedload(FormulaItem.producto))
         .join(Consulta, FormulaItem.consulta_id == Consulta.id)
@@ -17,16 +19,15 @@ def listar_por_consulta(db: Session, consulta_id: int, empresa_id: int) -> List[
         .filter(
             FormulaItem.consulta_id == consulta_id,
             FormulaItem.consulta_id.isnot(None),
-            Mascota.empresa_id == empresa_id,
         )
-        .order_by(FormulaItem.id)
-        .all()
     )
+    q = join_mascota_accesible_por_empresa(q, empresa_id)
+    return q.order_by(FormulaItem.id).all()
 
 
 def listar_por_cita(db: Session, cita_id: int, empresa_id: int) -> List[FormulaItem]:
-    """Lista ítems de prescripción de una cita (medicamentos a recetar; empresa vía mascota)."""
-    return (
+    """Lista ítems de prescripción de una cita (acceso vía vínculo)."""
+    q = (
         db.query(FormulaItem)
         .options(joinedload(FormulaItem.producto))
         .join(Cita, FormulaItem.cita_id == Cita.id)
@@ -34,11 +35,10 @@ def listar_por_cita(db: Session, cita_id: int, empresa_id: int) -> List[FormulaI
         .filter(
             FormulaItem.cita_id == cita_id,
             FormulaItem.cita_id.isnot(None),
-            Mascota.empresa_id == empresa_id,
         )
-        .order_by(FormulaItem.id)
-        .all()
     )
+    q = join_mascota_accesible_por_empresa(q, empresa_id)
+    return q.order_by(FormulaItem.id).all()
 
 
 def crear_item(
@@ -85,13 +85,14 @@ def eliminar_item(
     empresa_id: int,
 ) -> bool:
     """Elimina un ítem de fórmula si pertenece a una consulta de la empresa."""
-    item = (
+    q = (
         db.query(FormulaItem)
         .join(Consulta, FormulaItem.consulta_id == Consulta.id)
         .join(Mascota, Consulta.mascota_id == Mascota.id)
-        .filter(FormulaItem.id == item_id, FormulaItem.consulta_id.isnot(None), Mascota.empresa_id == empresa_id)
-        .first()
+        .filter(FormulaItem.id == item_id, FormulaItem.consulta_id.isnot(None))
     )
+    q = join_mascota_accesible_por_empresa(q, empresa_id)
+    item = q.first()
     if not item:
         return False
     db.delete(item)
@@ -101,13 +102,14 @@ def eliminar_item(
 
 def eliminar_item_cita(db: Session, item_id: int, empresa_id: int) -> bool:
     """Elimina un ítem de prescripción de una cita si pertenece a la empresa."""
-    item = (
+    q = (
         db.query(FormulaItem)
         .join(Cita, FormulaItem.cita_id == Cita.id)
         .join(Mascota, Cita.mascota_id == Mascota.id)
-        .filter(FormulaItem.id == item_id, FormulaItem.cita_id.isnot(None), Mascota.empresa_id == empresa_id)
-        .first()
+        .filter(FormulaItem.id == item_id, FormulaItem.cita_id.isnot(None))
     )
+    q = join_mascota_accesible_por_empresa(q, empresa_id)
+    item = q.first()
     if not item:
         return False
     db.delete(item)
@@ -138,10 +140,11 @@ def copy_cita_formula_to_consulta(
 
 
 def obtener_item(db: Session, item_id: int, empresa_id: int) -> FormulaItem | None:
-    return (
+    q = (
         db.query(FormulaItem)
         .join(Consulta, FormulaItem.consulta_id == Consulta.id)
         .join(Mascota, Consulta.mascota_id == Mascota.id)
-        .filter(FormulaItem.id == item_id, Mascota.empresa_id == empresa_id)
-        .first()
+        .filter(FormulaItem.id == item_id)
     )
+    q = join_mascota_accesible_por_empresa(q, empresa_id)
+    return q.first()

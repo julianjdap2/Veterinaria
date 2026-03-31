@@ -7,10 +7,12 @@ import type {
   Consulta,
   ConsultaCreate,
   ConsultaCreateConFormula,
+  ConsultaUpdate,
   ConsultaParaVenta,
   ResumenConsulta,
   FormulaItem,
   FormulaItemCreate,
+  AsistenteClinicoResponse,
 } from '../../api/types'
 
 export async function fetchConsultasByMascota(mascotaId: number): Promise<Consulta[]> {
@@ -30,6 +32,13 @@ export async function fetchConsultasPorCliente(clienteId: number): Promise<Consu
 
 export async function fetchResumenConsulta(consultaId: number): Promise<ResumenConsulta> {
   const { data } = await apiClient.get<ResumenConsulta>(`/consultas/${consultaId}/resumen`)
+  return data
+}
+
+export async function fetchAsistenteClinico(consultaId: number): Promise<AsistenteClinicoResponse> {
+  const { data } = await apiClient.get<AsistenteClinicoResponse>(
+    `/consultas/${consultaId}/asistente-clinico`,
+  )
   return data
 }
 
@@ -60,6 +69,11 @@ export async function createConsulta(payload: ConsultaCreate): Promise<Consulta>
 
 export async function createConsultaConFormula(payload: ConsultaCreateConFormula): Promise<Consulta> {
   const { data } = await apiClient.post<Consulta>('/consultas/crear-con-formula', payload)
+  return data
+}
+
+export async function patchConsulta(consultaId: number, payload: ConsultaUpdate): Promise<Consulta> {
+  const { data } = await apiClient.patch<Consulta>(`/consultas/${consultaId}`, payload)
   return data
 }
 

@@ -8,6 +8,8 @@ from datetime import datetime, date
 from typing import Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.extras_clinicos_schema import CitaExtrasClinicos
+
 
 EstadoCitaStr = Literal["pendiente", "confirmada", "cancelada", "atendida", "revision"]
 
@@ -15,32 +17,40 @@ EstadoCitaStr = Literal["pendiente", "confirmada", "cancelada", "atendida", "rev
 class CitaBase(BaseModel):
     """Campos comunes de una cita."""
 
-    mascota_id: int
+    mascota_id: int | None = None
     fecha: Optional[datetime] = None
+    fecha_fin: Optional[datetime] = None
     motivo: Optional[str] = Field(None, max_length=200)
     notas: Optional[str] = None
     urgente: Optional[bool] = False
+    sin_hora_definida: Optional[bool] = False
     en_sala_espera: Optional[bool] = False
     estado: Optional[EstadoCitaStr] = "pendiente"
     veterinario_id: Optional[int] = None
+    encargados_ids: list[int] = Field(default_factory=list)
+    extras_clinicos: Optional[CitaExtrasClinicos] = None
 
 
 class CitaCreate(CitaBase):
     """Payload para crear una cita."""
 
-    pass
+    solo_reservar_espacio: bool = False
 
 
 class CitaUpdate(BaseModel):
     """Payload para actualizar una cita (parcial)."""
 
     fecha: Optional[datetime] = None
+    fecha_fin: Optional[datetime] = None
     motivo: Optional[str] = Field(None, max_length=200)
     notas: Optional[str] = None
     urgente: Optional[bool] = None
+    sin_hora_definida: Optional[bool] = None
     en_sala_espera: Optional[bool] = None
     estado: Optional[EstadoCitaStr] = None
     veterinario_id: Optional[int] = None
+    encargados_ids: Optional[list[int]] = None
+    extras_clinicos: Optional[CitaExtrasClinicos] = None
 
 
 class CitaResponse(CitaBase):
@@ -50,6 +60,7 @@ class CitaResponse(CitaBase):
     veterinario_id: Optional[int] = None
     veterinario_nombre: Optional[str] = None
     mascota_nombre: Optional[str] = Field(default=None, description="Nombre de la mascota (enriquecido en API).")
+    cliente_nombre: Optional[str] = Field(default=None, description="Nombre del propietario (enriquecido en API).")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -61,23 +72,6 @@ class CitasDisponibilidadResponse(BaseModel):
     reservado: list[str]  # slots ocupados dentro de la jornada
 
 
-class CitaRecurrenteCreate(BaseModel):
-    """Crea múltiples citas repetidas en el tiempo."""
-
-    mascota_id: int
-    fecha_inicio: datetime
-    veterinario_id: int
-
-    motivo: Optional[str] = Field(None, max_length=200)
-    notas: Optional[str] = None
-    urgente: bool = False
-
-    # Repetición simple (cada N semanas por X repeticiones).
-    repeticiones: int = Field(2, ge=2, le=50)
-    intervalo_semana: int = Field(1, ge=1, le=12)
-    crear_waitlist_en_conflicto: bool = True
-
-
 class CitaLlegadaCreate(BaseModel):
     """Crea cita por orden de llegada con asignación automática."""
 
@@ -85,14 +79,10 @@ class CitaLlegadaCreate(BaseModel):
     motivo: Optional[str] = Field(None, max_length=200)
     notas: Optional[str] = None
     urgente: bool = False
+    encargados_ids: list[int] = Field(default_factory=list)
     veterinario_preferido_id: Optional[int] = None
     fecha_llegada: Optional[datetime] = None
-
-
-class CitasRecurrentesResponse(BaseModel):
-    created_ids: list[int]
-    skipped: list[dict] = []  # [{fecha: 'YYYY-MM-DDTHH:mm:ss', message: '...'}]
-    waitlist_ids: list[int] = []
+    extras_clinicos: Optional[CitaExtrasClinicos] = None
 
 
 class ListaEsperaCreate(BaseModel):

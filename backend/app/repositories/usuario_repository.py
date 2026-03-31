@@ -14,6 +14,25 @@ def get_user_by_email(db: Session, email: str) -> Usuario | None:
     return db.query(Usuario).filter(Usuario.email == email).first()
 
 
+def get_user_by_email_excluding_id(db: Session, email: str, exclude_id: int) -> Usuario | None:
+    return (
+        db.query(Usuario)
+        .filter(Usuario.email == email, Usuario.id != exclude_id)
+        .first()
+    )
+
+
+def count_active_admins_empresa(db: Session, empresa_id: int, *, exclude_user_id: int | None = None) -> int:
+    q = db.query(Usuario).filter(
+        Usuario.empresa_id == empresa_id,
+        Usuario.rol_id == 1,
+        Usuario.activo.is_(True),
+    )
+    if exclude_user_id is not None:
+        q = q.filter(Usuario.id != exclude_user_id)
+    return q.count()
+
+
 def count_users_by_empresa(db: Session, empresa_id: int) -> int:
     return db.query(Usuario).filter(Usuario.empresa_id == empresa_id).count()
 
@@ -43,9 +62,13 @@ def get_usuario_by_id_and_empresa(db: Session, usuario_id: int, empresa_id: int)
     )
 
 
-def listar_veterinarios_por_empresa(db: Session, empresa_id: int) -> list[Usuario]:
+def listar_veterinarios_por_empresa(
+    db: Session, empresa_id: int, *, solo_agenda_personal: bool = False
+) -> list[Usuario]:
     """Lista usuarios con rol veterinario (rol_id=2) activos de la empresa."""
-    return (
+    from app.security.usuario_operativo import operativo_para_enforcement
+
+    q = (
         db.query(Usuario)
         .filter(
             Usuario.empresa_id == empresa_id,
@@ -53,8 +76,11 @@ def listar_veterinarios_por_empresa(db: Session, empresa_id: int) -> list[Usuari
             Usuario.activo.is_(True),
         )
         .order_by(Usuario.nombre)
-        .all()
     )
+    vets = q.all()
+    if solo_agenda_personal:
+        vets = [v for v in vets if operativo_para_enforcement(v).agenda_personal]
+    return vets
 
 
 def update_usuario_activo(db: Session, usuario_id: int, empresa_id: int, activo: bool) -> Usuario | None:

@@ -55,7 +55,7 @@ def listar_ventas(
     _perm=Depends(require_admin_permission("admin_gestion_ventas")),
     _feature=Depends(require_feature("modulo_ventas")),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     consulta_id: int | None = None,
 ):
     """Lista ventas; opcionalmente filtradas por consulta_id."""

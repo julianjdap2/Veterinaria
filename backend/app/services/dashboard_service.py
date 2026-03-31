@@ -1,16 +1,21 @@
+import json
+from collections import Counter
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.models.cita import Cita
-from app.models.mascota import Mascota
 from app.models.usuario import Usuario
 from app.models.lista_espera import ListaEspera
 from app.models.venta import Venta, VentaItem
 from app.models.producto import Producto
 from app.models.consulta import Consulta
 from app.models.notification_log import NotificationLog
+
+from app.repositories.cita_repository import base_query_citas_empresa
+from app.repositories.consulta_repository import base_query_consultas_empresa
+from app.services.variables_clinicas_service import obtener_variables_clinicas_service
 
 
 def _day_window(target: date) -> tuple[datetime, datetime]:
@@ -26,7 +31,9 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
 
     # Resumen de estados de citas en el periodo.
     agg = (
-        db.query(
+        base_query_citas_empresa(db, empresa_id)
+        .filter(Cita.fecha >= start, Cita.fecha < end)
+        .with_entities(
             func.count(Cita.id).label("total"),
             func.sum(case((Cita.estado == "pendiente", 1), else_=0)).label("pendientes"),
             func.sum(case((Cita.estado == "confirmada", 1), else_=0)).label("confirmadas"),
@@ -35,12 +42,6 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
             func.sum(case((Cita.estado == "cancelada", 1), else_=0)).label("canceladas"),
             func.sum(case((Cita.urgente.is_(True), 1), else_=0)).label("urgentes"),
             func.sum(case((Cita.en_sala_espera.is_(True), 1), else_=0)).label("en_sala"),
-        )
-        .join(Mascota, Cita.mascota_id == Mascota.id)
-        .filter(
-            Mascota.empresa_id == empresa_id,
-            Cita.fecha >= start,
-            Cita.fecha < end,
         )
         .first()
     )
@@ -53,13 +54,12 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
     canceladas_hoy = int(agg.canceladas or 0)
     urgentes_hoy = int(agg.urgentes or 0)
     en_sala_espera_ahora = (
-        db.query(func.count(Cita.id))
-        .join(Mascota, Cita.mascota_id == Mascota.id)
+        base_query_citas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             Cita.en_sala_espera.is_(True),
             Cita.estado.in_(["pendiente", "confirmada"]),
         )
+        .with_entities(func.count(Cita.id))
         .scalar()
     )
     en_sala_espera_ahora = int(en_sala_espera_ahora or 0)
@@ -102,29 +102,27 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
 
     # Consultas del periodo.
     consultas_totales = (
-        db.query(func.count(Consulta.id))
-        .join(Mascota, Consulta.mascota_id == Mascota.id)
+        base_query_consultas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             func.coalesce(Consulta.fecha_consulta, Consulta.created_at) >= start,
             func.coalesce(Consulta.fecha_consulta, Consulta.created_at) < end,
         )
+        .with_entities(func.count(Consulta.id))
         .scalar()
     )
     consultas_totales_periodo = int(consultas_totales or 0)
 
     top_motivos_rows = (
-        db.query(
-            Consulta.motivo_consulta.label("texto"),
-            func.count(Consulta.id).label("cantidad"),
-        )
-        .join(Mascota, Consulta.mascota_id == Mascota.id)
+        base_query_consultas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             func.coalesce(Consulta.fecha_consulta, Consulta.created_at) >= start,
             func.coalesce(Consulta.fecha_consulta, Consulta.created_at) < end,
             Consulta.motivo_consulta.isnot(None),
             Consulta.motivo_consulta != "",
+        )
+        .with_entities(
+            Consulta.motivo_consulta.label("texto"),
+            func.count(Consulta.id).label("cantidad"),
         )
         .group_by(Consulta.motivo_consulta)
         .order_by(func.count(Consulta.id).desc())
@@ -138,17 +136,16 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
     ]
 
     top_tratamientos_rows = (
-        db.query(
-            Consulta.tratamiento.label("texto"),
-            func.count(Consulta.id).label("cantidad"),
-        )
-        .join(Mascota, Consulta.mascota_id == Mascota.id)
+        base_query_consultas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             func.coalesce(Consulta.fecha_consulta, Consulta.created_at) >= start,
             func.coalesce(Consulta.fecha_consulta, Consulta.created_at) < end,
             Consulta.tratamiento.isnot(None),
             Consulta.tratamiento != "",
+        )
+        .with_entities(
+            Consulta.tratamiento.label("texto"),
+            func.count(Consulta.id).label("cantidad"),
         )
         .group_by(Consulta.tratamiento)
         .order_by(func.count(Consulta.id).desc())
@@ -160,6 +157,76 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
         for r in top_tratamientos_rows
         if (r.texto or "").strip()
     ]
+
+    # Variables clínicas (extras JSON en consultas/citas del periodo).
+    def _parse_extras(raw: str | None) -> dict:
+        if not raw or not str(raw).strip():
+            return {}
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def _top_from_counter(counter: Counter[str], labels: dict[str, str], limit: int = 10) -> list[dict]:
+        out: list[dict] = []
+        for item_id, qty in counter.most_common(limit):
+            out.append({"texto": labels.get(item_id, item_id), "cantidad": int(qty)})
+        return out
+
+    vars_catalog = obtener_variables_clinicas_service(db, empresa_id)
+    vacunas_label = {x.id: x.nombre for x in vars_catalog.vacunas}
+    pruebas_label = {x.id: x.nombre for x in vars_catalog.pruebas_laboratorio}
+    hospital_label = {x.id: x.nombre for x in vars_catalog.hospitalizacion}
+    proc_label = {x.id: x.nombre for x in vars_catalog.procedimientos}
+
+    consulta_extras_rows = (
+        base_query_consultas_empresa(db, empresa_id)
+        .filter(
+            func.coalesce(Consulta.fecha_consulta, Consulta.created_at) >= start,
+            func.coalesce(Consulta.fecha_consulta, Consulta.created_at) < end,
+            Consulta.extras_clinicos_json.isnot(None),
+        )
+        .with_entities(Consulta.extras_clinicos_json)
+        .all()
+    )
+    cnt_vacunas = Counter[str]()
+    cnt_pruebas = Counter[str]()
+    cnt_hospital = Counter[str]()
+    for (raw_extras,) in consulta_extras_rows:
+        ex = _parse_extras(raw_extras)
+        for vid in ex.get("vacuna_ids") or []:
+            if isinstance(vid, str) and vid.strip():
+                cnt_vacunas[vid] += 1
+        for pid in ex.get("pruebas_lab_ids") or []:
+            if isinstance(pid, str) and pid.strip():
+                cnt_pruebas[pid] += 1
+        hid = ex.get("hospitalizacion_id")
+        if isinstance(hid, str) and hid.strip():
+            cnt_hospital[hid] += 1
+
+    cita_extras_rows = (
+        base_query_citas_empresa(db, empresa_id)
+        .filter(
+            Cita.fecha >= start,
+            Cita.fecha < end,
+            Cita.estado != "cancelada",
+            Cita.extras_clinicos_json.isnot(None),
+        )
+        .with_entities(Cita.extras_clinicos_json)
+        .all()
+    )
+    cnt_proc = Counter[str]()
+    for (raw_extras,) in cita_extras_rows:
+        ex = _parse_extras(raw_extras)
+        pid = ex.get("procedimiento_id")
+        if isinstance(pid, str) and pid.strip():
+            cnt_proc[pid] += 1
+
+    top_vacunas_consulta = _top_from_counter(cnt_vacunas, vacunas_label)
+    top_pruebas_laboratorio_consulta = _top_from_counter(cnt_pruebas, pruebas_label)
+    top_hospitalizacion_consulta = _top_from_counter(cnt_hospital, hospital_label)
+    top_procedimientos_cita = _top_from_counter(cnt_proc, proc_label)
 
     notif_today = (
         db.query(
@@ -182,19 +249,17 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
 
     # Top veterinarios por carga en el periodo.
     top_rows = (
-        db.query(
-            Cita.veterinario_id,
-            func.count(Cita.id).label("citas"),
-            func.max(Usuario.nombre).label("nombre"),
-        )
-        .join(Mascota, Cita.mascota_id == Mascota.id)
-        .join(Usuario, Usuario.id == Cita.veterinario_id, isouter=True)
+        base_query_citas_empresa(db, empresa_id)
         .filter(
-            Mascota.empresa_id == empresa_id,
             Cita.fecha >= start,
             Cita.fecha < end,
             Cita.veterinario_id.isnot(None),
             Cita.estado != "cancelada",
+        )
+        .with_entities(
+            Cita.veterinario_id,
+            func.count(Cita.id).label("citas"),
+            func.max(Usuario.nombre).label("nombre"),
         )
         .group_by(Cita.veterinario_id)
         .order_by(func.count(Cita.id).desc())
@@ -247,14 +312,13 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
         d = hoy - timedelta(days=i)
         d_start, d_end = _day_window(d)
         attended = (
-            db.query(func.count(Cita.id))
-            .join(Mascota, Cita.mascota_id == Mascota.id)
+            base_query_citas_empresa(db, empresa_id)
             .filter(
-                Mascota.empresa_id == empresa_id,
                 Cita.fecha >= d_start,
                 Cita.fecha < d_end,
                 Cita.estado == "atendida",
             )
+            .with_entities(func.count(Cita.id))
             .scalar()
         )
         series.append({"fecha": d.strftime("%Y-%m-%d"), "atendidas": int(attended or 0)})
@@ -301,6 +365,10 @@ def get_dashboard_resumen_service(db: Session, empresa_id: int, dias: int = 1) -
         "consultas_totales_periodo": consultas_totales_periodo,
         "top_motivos_consulta": top_motivos_consulta,
         "top_tratamientos": top_tratamientos,
+        "top_vacunas_consulta": top_vacunas_consulta,
+        "top_pruebas_laboratorio_consulta": top_pruebas_laboratorio_consulta,
+        "top_hospitalizacion_consulta": top_hospitalizacion_consulta,
+        "top_procedimientos_cita": top_procedimientos_cita,
         "top_veterinarios_hoy": top_veterinarios_hoy,
         "atendidas_ultimos_7_dias": series,
     }

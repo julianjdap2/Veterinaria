@@ -18,6 +18,16 @@ export const ROL_LABELS: Record<RolId, string> = {
   [ROLES.SUPERADMIN]: 'Superadmin',
 }
 
+/** Textos orientativos para el selector de rol (referencia funcional tipo software de gestión clínica). */
+export const ROL_DESCRIPTIONS: Partial<Record<RolId, string>> = {
+  [ROLES.ADMIN]:
+    'Acceso amplio a la empresa; puede gestionar usuarios y configuración según el perfil de administrador asignado.',
+  [ROLES.VETERINARIO]:
+    'Registro de consultas e historia clínica; puede asignarse como profesional en citas.',
+  [ROLES.RECEPCION]:
+    'Gestión de clientes, mascotas, citas y ventas según los módulos habituales de recepción.',
+}
+
 export const DEFAULT_PAGE_SIZE = 20
 
 /** Listados y selectores: ver `listDefaults.ts` (tamaños unificados). */

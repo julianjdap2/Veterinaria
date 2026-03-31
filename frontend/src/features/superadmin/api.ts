@@ -159,6 +159,7 @@ export interface SuperadminPlan {
   feature_recordatorios_automaticos: boolean
   feature_dashboard_avanzado: boolean
   feature_exportaciones: boolean
+  feature_ia_consultorio: boolean
   soporte_nivel: string
 }
 

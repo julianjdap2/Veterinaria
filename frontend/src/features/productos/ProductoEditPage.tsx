@@ -5,6 +5,7 @@ import { useProductoDetail, useUpdateProducto } from './hooks/useProductos'
 import { fetchCategoriasProducto } from './api'
 import { Card } from '../../shared/ui/Card'
 import { Button } from '../../shared/ui/Button'
+import { PageHeader } from '../../shared/ui/PageHeader'
 import { Input } from '../../shared/ui/Input'
 import { Alert } from '../../shared/ui/Alert'
 import { toast } from '../../core/toast-store'
@@ -116,13 +117,19 @@ export function ProductoEditPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Link to="/productos" className="text-primary-600 hover:underline text-sm">
-        ← Volver a inventario
-      </Link>
-      <h1 className="text-2xl font-bold text-gray-900">Editar producto</h1>
+    <div className="mx-auto max-w-3xl space-y-6 pb-8">
+      <PageHeader
+        breadcrumbs={[{ label: 'Inventario', to: '/productos' }, { label: producto.nombre }]}
+        title="Editar producto"
+        subtitle={producto.nombre}
+        actions={
+          <Link to="/productos" className="text-sm font-medium text-primary-600 hover:text-primary-800">
+            ← Volver al listado
+          </Link>
+        }
+      />
 
-      <Card title={producto.nombre}>
+      <Card title="Datos del artículo">
         <form onSubmit={handleSubmit} className="max-w-2xl space-y-4">
           {error && (
             <Alert variant="error" onDismiss={() => setError(null)}>
